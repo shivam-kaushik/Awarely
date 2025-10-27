@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/services/notification_service.dart';
 import '../../core/services/permission_service.dart';
+import 'recent_notifications_screen.dart';
 
 /// Settings screen to manage permissions and notification diagnostics
 class SettingsScreen extends StatefulWidget {
@@ -160,6 +161,56 @@ class _SettingsScreenState extends State<SettingsScreen>
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             ListTile(
+              title: const Text('Test notifications'),
+              subtitle:
+                  const Text('Send a test notification to verify permissions'),
+              trailing: ElevatedButton(
+                onPressed: () async {
+                  final notif = _notificationService;
+
+                  // Test immediate notification
+                  await notif.showNotification(
+                    id: 999999,
+                    title: '✅ Test Notification',
+                    body: 'If you see this, notifications work!',
+                  );
+
+                  // Test scheduled notification (30 seconds from now)
+                  final testTime =
+                      DateTime.now().add(const Duration(seconds: 30));
+                  await notif.scheduleNotification(
+                    id: 888888,
+                    title: '⏰ Test Scheduled',
+                    body: 'This should appear in 30 seconds',
+                    scheduledTime: testTime,
+                  );
+
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                            'Test sent! Check notification in 30 seconds.'),
+                        duration: Duration(seconds: 3),
+                      ),
+                    );
+                  }
+                },
+                child: const Text('Send Test'),
+              ),
+            ),
+            ListTile(
+              title: const Text('Recent notifications'),
+              subtitle: const Text('View recent notification events'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (c) => const RecentNotificationsScreen(),
+                  ),
+                );
+              },
+            ),
+            ListTile(
               title: const Text('Pending scheduled notifications'),
               subtitle: _loadingPending
                   ? const Text('Loading...')
@@ -180,6 +231,21 @@ class _SettingsScreenState extends State<SettingsScreen>
                   )),
             ],
             const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () async {
+                await _permissionService.requestDisableBatteryOptimization();
+                await Future.delayed(const Duration(seconds: 1));
+                _refreshStatuses();
+              },
+              icon: const Icon(Icons.battery_charging_full),
+              label: const Text('Disable Battery Optimization'),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Recommended: Disable battery optimization for reliable notification delivery',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: () async {
                 await _permissionService.openSettings();

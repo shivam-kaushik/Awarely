@@ -142,13 +142,23 @@ class ReminderRepository {
     return maps.map((map) => ContextEvent.fromMap(map)).toList();
   }
 
+  /// Update context event outcome (e.g., mark as seen/completed)
+  Future<int> updateContextEventOutcome(String eventId, String outcome) async {
+    final db = await _dbHelper.database;
+    return await db.update(
+      AppConstants.contextEventsTable,
+      {'outcome': outcome},
+      where: 'id = ?',
+      whereArgs: [eventId],
+    );
+  }
+
   /// Get completion statistics
   Future<Map<String, dynamic>> getStatistics() async {
     final db = await _dbHelper.database;
 
     // Total reminders
-    final totalCount =
-        Sqflite.firstIntValue(
+    final totalCount = Sqflite.firstIntValue(
           await db.rawQuery(
             'SELECT COUNT(*) FROM ${AppConstants.remindersTable}',
           ),
@@ -156,8 +166,7 @@ class ReminderRepository {
         0;
 
     // Active reminders
-    final activeCount =
-        Sqflite.firstIntValue(
+    final activeCount = Sqflite.firstIntValue(
           await db.rawQuery(
             'SELECT COUNT(*) FROM ${AppConstants.remindersTable} WHERE enabled = 1',
           ),
@@ -165,8 +174,7 @@ class ReminderRepository {
         0;
 
     // Total events
-    final totalEvents =
-        Sqflite.firstIntValue(
+    final totalEvents = Sqflite.firstIntValue(
           await db.rawQuery(
             'SELECT COUNT(*) FROM ${AppConstants.contextEventsTable}',
           ),
@@ -174,8 +182,7 @@ class ReminderRepository {
         0;
 
     // Completed events
-    final completedEvents =
-        Sqflite.firstIntValue(
+    final completedEvents = Sqflite.firstIntValue(
           await db.rawQuery(
             'SELECT COUNT(*) FROM ${AppConstants.contextEventsTable} WHERE outcome = ?',
             [AppConstants.outcomeCompleted],
@@ -184,9 +191,8 @@ class ReminderRepository {
         0;
 
     // Calculate completion rate
-    final completionRate = totalEvents > 0
-        ? (completedEvents / totalEvents * 100).round()
-        : 0;
+    final completionRate =
+        totalEvents > 0 ? (completedEvents / totalEvents * 100).round() : 0;
 
     return {
       'totalReminders': totalCount,

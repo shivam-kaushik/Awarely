@@ -17,6 +17,26 @@ class PermissionService {
     }
   }
 
+  /// Check if battery optimization is ignored (Android)
+  Future<bool> isBatteryOptimizationDisabled() async {
+    try {
+      final bool result = await _platform.invokeMethod('isBatteryOptimizationDisabled');
+      return result;
+    } catch (e) {
+      debugPrint('Error checking battery optimization: $e');
+      return false;
+    }
+  }
+
+  /// Request to disable battery optimization
+  Future<void> requestDisableBatteryOptimization() async {
+    try {
+      await _platform.invokeMethod('requestDisableBatteryOptimization');
+    } catch (e) {
+      debugPrint('Error requesting battery optimization: $e');
+    }
+  }
+
   /// Ensure exact alarm permission is granted
   Future<bool> ensureExactAlarmPermission(
       BuildContext context, {

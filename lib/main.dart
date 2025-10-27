@@ -71,9 +71,18 @@ void main() async {
   // Initialize notification service
   final notificationService = NotificationService();
   await notificationService.initialize();
+
   // Request notification permission (Android 13+ / iOS)
   final permissionService = PermissionService();
   await permissionService.requestNotificationPermission();
+
+  // Request exact alarm permission (Android 12+) - critical for reliable scheduling
+  final hasExactAlarm = await permissionService.hasExactAlarmPermission();
+  debugPrint('📱 Exact alarm permission: $hasExactAlarm');
+  if (!hasExactAlarm) {
+    debugPrint(
+        '⚠️ Exact alarm permission not granted. Notifications may not be reliable.');
+  }
 
   // Set preferred orientations
   await SystemChrome.setPreferredOrientations([
@@ -103,7 +112,6 @@ class AwarelyApp extends StatelessWidget {
         ChangeNotifierProvider<ReminderProvider>(
           create: (context) => ReminderProvider(
             reminderRepository: context.read<ReminderRepository>(),
-            notificationService: context.read<NotificationService>(),
           )..loadReminders(),
         ),
       ],

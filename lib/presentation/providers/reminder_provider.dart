@@ -2,13 +2,12 @@ import 'package:flutter/foundation.dart';
 
 import '../../data/models/reminder.dart';
 import '../../data/repositories/reminder_repository.dart';
-import '../../core/services/notification_service.dart';
+import '../../core/services/alarm_service.dart';
 import '../../core/services/nlu_parser.dart';
 
 /// Reminder state management provider
 class ReminderProvider with ChangeNotifier {
   final ReminderRepository _reminderRepository;
-  final NotificationService _notificationService;
 
   List<Reminder> _reminders = [];
   bool _isLoading = false;
@@ -17,9 +16,7 @@ class ReminderProvider with ChangeNotifier {
 
   ReminderProvider({
     required ReminderRepository reminderRepository,
-    required NotificationService notificationService,
-  })  : _reminderRepository = reminderRepository,
-        _notificationService = notificationService;
+  }) : _reminderRepository = reminderRepository;
 
   // Getters
   List<Reminder> get reminders => _reminders;
@@ -67,18 +64,23 @@ class ReminderProvider with ChangeNotifier {
       // Save to database
       final id = await _reminderRepository.createReminder(reminder);
 
-      // Schedule notification if time-based
+      // Schedule notification(s)
       if (reminder.timeAt != null) {
-        await _notificationService.scheduleNotification(
-          id: reminder.id.hashCode,
-          title: 'Reminder',
-          body: reminder.text,
-          scheduledTime: reminder.timeAt!,
-          payload: reminder.id,
-        );
-        // Debug log to help trace scheduling in device logs
-        debugPrint(
-            'Scheduled notification for reminder ${reminder.id} at ${reminder.timeAt} (id=${reminder.id.hashCode})');
+        if (reminder.isRecurring) {
+          // Schedule multiple occurrences for recurring reminders
+          await _scheduleRecurringNotifications(reminder);
+        } else {
+          // Schedule single notification using native AlarmManager
+          await AlarmService.scheduleExactAlarm(
+            id: reminder.id.hashCode,
+            title: 'Reminder',
+            body: reminder.text,
+            scheduledTime: reminder.timeAt!,
+            payload: reminder.id,
+          );
+          debugPrint(
+              'Scheduled alarm for reminder ${reminder.id} at ${reminder.timeAt} (id=${reminder.id.hashCode})');
+        }
       }
 
       // Reload reminders
@@ -96,23 +98,109 @@ class ReminderProvider with ChangeNotifier {
   Future<String?> createReminder(Reminder reminder) async {
     try {
       final id = await _reminderRepository.createReminder(reminder);
-      // Schedule notification if time-based reminder created via UI
+
+      // Schedule notifications
       if (reminder.timeAt != null) {
-        await _notificationService.scheduleNotification(
-          id: reminder.id.hashCode,
-          title: 'Reminder',
-          body: reminder.text,
-          scheduledTime: reminder.timeAt!,
-          payload: reminder.id,
-        );
+        if (reminder.isRecurring) {
+          // Schedule multiple occurrences for recurring reminders
+          await _scheduleRecurringNotifications(reminder);
+        } else {
+          // Schedule single notification for one-time reminders
+          final now = DateTime.now();
+          final scheduleTime = reminder.timeAt!;
+
+          // Validate time is in future
+          if (scheduleTime.isAfter(now)) {
+            debugPrint('📅 Creating reminder: ${reminder.text}');
+            debugPrint('🕐 Scheduled for: $scheduleTime');
+            debugPrint('⏰ Time from now: ${scheduleTime.difference(now)}');
+
+            await AlarmService.scheduleExactAlarm(
+              id: reminder.id.hashCode,
+              title: 'Reminder',
+              body: reminder.text,
+              scheduledTime: scheduleTime,
+              payload: reminder.id,
+            );
+
+            debugPrint('✅ Alarm scheduled');
+          } else {
+            debugPrint('⚠️ Warning: Scheduled time is in the past!');
+          }
+        }
       }
+
       await loadReminders();
       return id;
     } catch (e) {
       _error = e.toString();
+      debugPrint('❌ Error creating reminder: $e');
       notifyListeners();
       return null;
     }
+  }
+
+  /// Schedule multiple notifications for recurring reminders
+  /// Schedules next 24 hours (or up to 50 occurrences, whichever is less)
+  Future<void> _scheduleRecurringNotifications(Reminder reminder) async {
+    if (!reminder.isRecurring ||
+        reminder.repeatInterval == null ||
+        reminder.repeatUnit == null) {
+      return;
+    }
+
+    debugPrint('🔁 Creating recurring reminder: ${reminder.text}');
+    debugPrint('⏰ Every ${reminder.repeatInterval} ${reminder.repeatUnit}');
+
+    // Calculate interval duration
+    Duration interval;
+    switch (reminder.repeatUnit) {
+      case 'minutes':
+        interval = Duration(minutes: reminder.repeatInterval!);
+        break;
+      case 'hours':
+        interval = Duration(hours: reminder.repeatInterval!);
+        break;
+      case 'days':
+        interval = Duration(days: reminder.repeatInterval!);
+        break;
+      case 'weeks':
+        interval = Duration(days: reminder.repeatInterval! * 7);
+        break;
+      default:
+        interval = Duration(minutes: reminder.repeatInterval!);
+    }
+
+    // Schedule up to 50 occurrences or 24 hours, whichever comes first
+    final now = DateTime.now();
+    final maxTime = now.add(const Duration(hours: 24));
+    int count = 0;
+    const maxOccurrences = 50;
+
+    DateTime nextOccurrence = reminder.timeAt ?? now.add(interval);
+
+    while (nextOccurrence.isBefore(maxTime) && count < maxOccurrences) {
+      if (nextOccurrence.isAfter(now)) {
+        // Use unique ID for each occurrence: base hash + occurrence index
+        final notificationId = reminder.id.hashCode + count;
+
+        await AlarmService.scheduleExactAlarm(
+          id: notificationId,
+          title: 'Reminder',
+          body: reminder.text,
+          scheduledTime: nextOccurrence,
+          payload: reminder.id,
+        );
+
+        debugPrint(
+            '  📅 Scheduled occurrence ${count + 1}: $nextOccurrence (id: $notificationId)');
+        count++;
+      }
+
+      nextOccurrence = nextOccurrence.add(interval);
+    }
+
+    debugPrint('✅ Scheduled $count occurrences for recurring reminder');
   }
 
   /// Update reminder
@@ -132,7 +220,7 @@ class ReminderProvider with ChangeNotifier {
   Future<bool> deleteReminder(String id) async {
     try {
       await _reminderRepository.deleteReminder(id);
-      await _notificationService.cancelNotification(id.hashCode);
+      await AlarmService.cancelAlarm(id.hashCode);
       await loadReminders();
       return true;
     } catch (e) {
@@ -148,12 +236,12 @@ class ReminderProvider with ChangeNotifier {
       await _reminderRepository.toggleReminder(id, enabled);
 
       if (!enabled) {
-        await _notificationService.cancelNotification(id.hashCode);
+        await AlarmService.cancelAlarm(id.hashCode);
       } else {
         // Reschedule if time-based
         final reminder = _reminders.firstWhere((r) => r.id == id);
         if (reminder.timeAt != null) {
-          await _notificationService.scheduleNotification(
+          await AlarmService.scheduleExactAlarm(
             id: reminder.id.hashCode,
             title: 'Reminder',
             body: reminder.text,

@@ -3,7 +3,9 @@ package com.example.awarely
 import android.app.AlarmManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import androidx.annotation.NonNull
 import io.flutter.embedding.android.FlutterActivity
@@ -12,10 +14,15 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.example.awarely/permissions"
+    private val ALARM_CHANNEL = "com.example.awarely/alarms"
+    private lateinit var alarmScheduler: AlarmScheduler
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         
+        alarmScheduler = AlarmScheduler(this)
+        
+        // Permissions channel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "hasExactAlarmPermission" -> {
@@ -24,6 +31,40 @@ class MainActivity: FlutterActivity() {
                 }
                 "openExactAlarmSettings" -> {
                     openExactAlarmSettings()
+                    result.success(null)
+                }
+                "isBatteryOptimizationDisabled" -> {
+                    val isDisabled = isBatteryOptimizationDisabled()
+                    result.success(isDisabled)
+                }
+                "requestDisableBatteryOptimization" -> {
+                    requestDisableBatteryOptimization()
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+        
+        // Alarm scheduler channel
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ALARM_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "scheduleExactAlarm" -> {
+                    val id = call.argument<Int>("id") ?: 0
+                    val title = call.argument<String>("title") ?: "Reminder"
+                    val body = call.argument<String>("body") ?: ""
+                    val scheduledTimeMillis = call.argument<Long>("scheduledTimeMillis") ?: 0L
+                    val payload = call.argument<String>("payload")
+                    
+                    val success = alarmScheduler.scheduleExactAlarm(id, title, body, scheduledTimeMillis, payload)
+                    result.success(success)
+                }
+                "cancelAlarm" -> {
+                    val id = call.argument<Int>("id") ?: 0
+                    alarmScheduler.cancelAlarm(id)
+                    result.success(null)
+                }
+                "cancelAllAlarms" -> {
+                    alarmScheduler.cancelAllAlarms()
                     result.success(null)
                 }
                 else -> result.notImplemented()
@@ -36,7 +77,6 @@ class MainActivity: FlutterActivity() {
             val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
             alarmManager.canScheduleExactAlarms()
         } else {
-            // Permission not needed on Android < 12
             true
         }
     }
@@ -47,9 +87,30 @@ class MainActivity: FlutterActivity() {
                 val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
                 startActivity(intent)
             } catch (e: Exception) {
-                // Fallback to app settings if exact alarm settings not available
                 val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                intent.data = android.net.Uri.parse("package:$packageName")
+                intent.data = Uri.parse("package:$packageName")
+                startActivity(intent)
+            }
+        }
+    }
+
+    private fun isBatteryOptimizationDisabled(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            powerManager.isIgnoringBatteryOptimizations(packageName)
+        } else {
+            true
+        }
+    }
+
+    private fun requestDisableBatteryOptimization() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                intent.data = Uri.parse("package:$packageName")
+                startActivity(intent)
+            } catch (e: Exception) {
+                val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
                 startActivity(intent)
             }
         }

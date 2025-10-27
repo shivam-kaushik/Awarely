@@ -48,7 +48,9 @@ class DatabaseHelper {
         enabled INTEGER DEFAULT 1,
         createdAt TEXT NOT NULL,
         lastTriggeredAt TEXT,
-        triggerCount INTEGER DEFAULT 0
+        triggerCount INTEGER DEFAULT 0,
+        repeatInterval INTEGER,
+        repeatUnit TEXT
       )
     ''');
 
@@ -100,8 +102,24 @@ class DatabaseHelper {
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
     // Handle future migrations here
     if (oldVersion < 2) {
-      // Example: Add new column
-      // await db.execute('ALTER TABLE reminders ADD COLUMN newColumn TEXT');
+      // Add recurrence fields - check if they exist first
+      try {
+        await db.execute(
+          'ALTER TABLE ${AppConstants.remindersTable} ADD COLUMN repeatInterval INTEGER',
+        );
+      } catch (e) {
+        // Column might already exist, ignore error
+        print('repeatInterval column already exists or error: $e');
+      }
+
+      try {
+        await db.execute(
+          'ALTER TABLE ${AppConstants.remindersTable} ADD COLUMN repeatUnit TEXT',
+        );
+      } catch (e) {
+        // Column might already exist, ignore error
+        print('repeatUnit column already exists or error: $e');
+      }
     }
   }
 

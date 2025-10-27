@@ -7,7 +7,7 @@ class AppConstants {
 
   // Database
   static const String dbName = 'awarely.db';
-  static const int dbVersion = 1;
+  static const int dbVersion = 2; // Updated for recurrence support
 
   // Tables
   static const String remindersTable = 'reminders';
@@ -45,6 +45,8 @@ class AppConstants {
   static const String outcomeMissed = 'missed';
   static const String outcomeSnoozed = 'snoozed';
   static const String outcomeDismissed = 'dismissed';
+  static const String outcomeSeen = 'seen';
+  static const String outcomePending = 'pending';
 
   // NLU Keywords
   static const List<String> timeKeywords = ['at', 'by', 'before', 'after'];

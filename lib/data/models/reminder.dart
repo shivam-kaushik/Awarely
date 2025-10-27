@@ -16,6 +16,9 @@ class Reminder {
   final DateTime createdAt;
   final DateTime? lastTriggeredAt;
   final int triggerCount;
+  final int?
+      repeatInterval; // How many units to repeat (e.g., 2 for "every 2 hours")
+  final String? repeatUnit; // 'minutes', 'hours', 'days', 'weeks'
 
   Reminder({
     String? id,
@@ -32,8 +35,10 @@ class Reminder {
     DateTime? createdAt,
     this.lastTriggeredAt,
     this.triggerCount = 0,
-  }) : id = id ?? const Uuid().v4(),
-       createdAt = createdAt ?? DateTime.now();
+    this.repeatInterval,
+    this.repeatUnit,
+  })  : id = id ?? const Uuid().v4(),
+        createdAt = createdAt ?? DateTime.now();
 
   /// Create Reminder from database map
   factory Reminder.fromMap(Map<String, dynamic> map) {
@@ -56,6 +61,8 @@ class Reminder {
           ? DateTime.parse(map['lastTriggeredAt'] as String)
           : null,
       triggerCount: map['triggerCount'] as int? ?? 0,
+      repeatInterval: map['repeatInterval'] as int?,
+      repeatUnit: map['repeatUnit'] as String?,
     );
   }
 
@@ -76,6 +83,8 @@ class Reminder {
       'createdAt': createdAt.toIso8601String(),
       'lastTriggeredAt': lastTriggeredAt?.toIso8601String(),
       'triggerCount': triggerCount,
+      'repeatInterval': repeatInterval,
+      'repeatUnit': repeatUnit,
     };
   }
 
@@ -94,7 +103,9 @@ class Reminder {
   String getContextDescription() {
     final parts = <String>[];
 
-    if (timeAt != null) {
+    if (repeatInterval != null && repeatUnit != null) {
+      parts.add('Every $repeatInterval $repeatUnit');
+    } else if (timeAt != null) {
       parts.add('at ${_formatTime(timeAt!)}');
     }
     if (onLeaveContext && geofenceId != null) {
@@ -117,6 +128,9 @@ class Reminder {
     return '$hour:$minute $period';
   }
 
+  /// Check if this is a recurring reminder
+  bool get isRecurring => repeatInterval != null && repeatUnit != null;
+
   /// Copy with method for updates
   Reminder copyWith({
     String? text,
@@ -131,6 +145,8 @@ class Reminder {
     bool? enabled,
     DateTime? lastTriggeredAt,
     int? triggerCount,
+    int? repeatInterval,
+    String? repeatUnit,
   }) {
     return Reminder(
       id: id,
@@ -147,6 +163,8 @@ class Reminder {
       createdAt: createdAt,
       lastTriggeredAt: lastTriggeredAt ?? this.lastTriggeredAt,
       triggerCount: triggerCount ?? this.triggerCount,
+      repeatInterval: repeatInterval ?? this.repeatInterval,
+      repeatUnit: repeatUnit ?? this.repeatUnit,
     );
   }
 }

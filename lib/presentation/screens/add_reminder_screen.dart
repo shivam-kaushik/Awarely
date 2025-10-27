@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
+import '../../core/services/notification_service.dart';
 import '../providers/reminder_provider.dart';
 import '../../core/services/nlu_parser.dart';
 import '../../data/models/reminder.dart';
@@ -31,6 +32,36 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
   void dispose() {
     _textController.dispose();
     super.dispose();
+  }
+
+  // Add this method to test notifications
+  Future<void> _testNotification() async {
+    final notificationService = NotificationService();
+
+    // Test immediate notification
+    await notificationService.showNotification(
+      id: 999999,
+      title: 'Test Notification',
+      body: 'If you see this, notifications work!',
+    );
+
+    // Test scheduled notification (1 minute from now)
+    final testTime = DateTime.now().add(const Duration(minutes: 1));
+    await notificationService.scheduleNotification(
+      id: 888888,
+      title: 'Test Scheduled',
+      body: 'This should appear in 1 minute',
+      scheduledTime: testTime,
+    );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Test notifications scheduled. Check in 1 minute!'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   Future<void> _createReminder() async {

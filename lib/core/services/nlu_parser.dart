@@ -14,9 +14,21 @@ class NLUParser {
     String? locationName;
     bool onLeaveContext = false;
     bool onArriveContext = false;
+    int? repeatInterval;
+    String? repeatUnit;
 
-    // Extract time context
-    timeAt = _extractTime(lowerText);
+    // Extract recurrence first (e.g., "every 2 minutes", "every hour")
+    final recurrenceInfo = _extractRecurrence(lowerText);
+    repeatInterval = recurrenceInfo['interval'];
+    repeatUnit = recurrenceInfo['unit'];
+
+    // Extract time context (only if not recurring)
+    if (repeatInterval == null) {
+      timeAt = _extractTime(lowerText);
+    } else {
+      // For recurring reminders, set first occurrence to now + interval
+      timeAt = _calculateFirstOccurrence(repeatInterval, repeatUnit!);
+    }
 
     // Extract location and movement context
     final locationInfo = _extractLocation(lowerText);
@@ -33,7 +45,84 @@ class NLUParser {
       geofenceId: locationName,
       onLeaveContext: onLeaveContext,
       onArriveContext: onArriveContext,
+      repeatInterval: repeatInterval,
+      repeatUnit: repeatUnit,
     );
+  }
+
+  /// Extract recurrence information from text
+  /// Examples: "every 2 minutes", "every hour", "every 30 seconds"
+  static Map<String, dynamic> _extractRecurrence(String text) {
+    // Pattern: "every <number> <unit>" or "every <unit>"
+    final patterns = [
+      RegExp(
+        r'every\s+(\d+)\s*(minute|minutes|min|mins|hour|hours|hr|hrs|day|days|week|weeks)',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'every\s+(minute|minutes|min|hour|hours|hr|day|days|week|weeks)',
+        caseSensitive: false,
+      ),
+    ];
+
+    for (var pattern in patterns) {
+      final match = pattern.firstMatch(text);
+      if (match != null) {
+        int interval = 1;
+        String? unit;
+
+        if (match.groupCount >= 2 && match.group(1) != null) {
+          // "every 2 minutes" case
+          interval = int.tryParse(match.group(1)!) ?? 1;
+          unit = match.group(2);
+        } else {
+          // "every minute" case
+          unit = match.group(1);
+        }
+
+        // Normalize unit
+        if (unit != null) {
+          if (unit.startsWith('min')) {
+            unit = 'minutes';
+          } else if (unit.startsWith('hour') || unit.startsWith('hr')) {
+            unit = 'hours';
+          } else if (unit.startsWith('day')) {
+            unit = 'days';
+          } else if (unit.startsWith('week')) {
+            unit = 'weeks';
+          }
+
+          return {'interval': interval, 'unit': unit};
+        }
+      }
+    }
+
+    return {'interval': null, 'unit': null};
+  }
+
+  /// Calculate first occurrence time for recurring reminder
+  static DateTime _calculateFirstOccurrence(int interval, String unit) {
+    final now = DateTime.now();
+    Duration duration;
+
+    switch (unit) {
+      case 'minutes':
+        duration = Duration(minutes: interval);
+        break;
+      case 'hours':
+        duration = Duration(hours: interval);
+        break;
+      case 'days':
+        duration = Duration(days: interval);
+        break;
+      case 'weeks':
+        duration = Duration(days: interval * 7);
+        break;
+      default:
+        duration = Duration(minutes: interval);
+    }
+
+    return now.add(duration);
   }
 
   /// Extract time from text
@@ -130,6 +219,15 @@ class NLUParser {
   /// Clean reminder text by removing context phrases
   static String _cleanReminderText(String text) {
     String cleaned = text;
+
+    // Remove recurrence phrases
+    cleaned = cleaned.replaceAll(
+      RegExp(
+        r'\s*every\s+\d*\s*(?:minute|minutes|min|mins|hour|hours|hr|hrs|day|days|week|weeks)\s*',
+        caseSensitive: false,
+      ),
+      ' ',
+    );
 
     // Remove time phrases
     cleaned = cleaned.replaceAll(
