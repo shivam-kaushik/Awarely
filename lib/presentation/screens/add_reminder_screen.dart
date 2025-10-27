@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../providers/reminder_provider.dart';
 import '../../core/services/nlu_parser.dart';
+import '../../data/models/reminder.dart';
+import '../../core/services/permission_service.dart';
 
 /// Add reminder screen with natural language input
 class AddReminderScreen extends StatefulWidget {
@@ -15,6 +18,14 @@ class AddReminderScreen extends StatefulWidget {
 class _AddReminderScreenState extends State<AddReminderScreen> {
   final TextEditingController _textController = TextEditingController();
   bool _isCreating = false;
+  late stt.SpeechToText _speech;
+  bool _isListening = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _speech = stt.SpeechToText();
+  }
 
   @override
   void dispose() {
@@ -26,17 +37,33 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
     final text = _textController.text.trim();
 
     if (text.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please enter a reminder')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a reminder')),
+      );
+      return;
+    }
+
+    // Check exact alarm permission first
+    final permissionService = PermissionService();
+    final hasExactAlarm = await permissionService.ensureExactAlarmPermission(
+      context,
+      rationale:
+          'Exact alarms are needed to deliver reminders at the right time.',
+    );
+
+    if (!hasExactAlarm) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Exact alarm permission is required')),
+        );
+      }
       return;
     }
 
     if (!NLUParser.hasValidIntent(text)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please provide a clear task description'),
-        ),
+            content: Text('Please provide a clear task description')),
       );
       return;
     }
@@ -46,7 +73,36 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
     });
 
     final reminderProvider = context.read<ReminderProvider>();
-    final id = await reminderProvider.createReminderFromText(text);
+
+    // Parse using NLU to allow editing of parsed time
+    final parsed = NLUParser.parseReminderText(text);
+
+    // If parsed time exists, ask user to confirm or edit
+    Reminder finalReminder = parsed;
+    if (parsed.timeAt != null) {
+      final picked = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(parsed.timeAt!),
+      );
+      if (picked != null) {
+        final now = DateTime.now();
+        final newDate = DateTime(
+          now.year,
+          now.month,
+          now.day,
+          picked.hour,
+          picked.minute,
+        );
+        // If user picks a time that has already passed today, schedule for tomorrow
+        var scheduled = newDate;
+        if (scheduled.isBefore(now)) {
+          scheduled = scheduled.add(const Duration(days: 1));
+        }
+        finalReminder = parsed.copyWith(timeAt: scheduled);
+      }
+    }
+
+    final id = await reminderProvider.createReminder(finalReminder);
 
     if (!mounted) return;
 
@@ -93,9 +149,41 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
               decoration: InputDecoration(
                 hintText: 'e.g., Take my keys when leaving home at 8 AM',
                 suffixIcon: IconButton(
-                  icon: const Icon(Icons.mic_rounded),
-                  onPressed: () {
-                    // Voice input - implement with speech_to_text
+                  icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
+                  onPressed: () async {
+                    final permissionService = PermissionService();
+                    final granted =
+                        await permissionService.ensureMicrophonePermission(
+                      context,
+                      rationale:
+                          'Microphone access is required for voice input.',
+                    );
+                    if (!granted) return;
+
+                    if (!_isListening) {
+                      final available = await _speech.initialize(
+                        onStatus: (status) {
+                          if (status == 'done' || status == 'notListening') {
+                            setState(() => _isListening = false);
+                            _speech.stop();
+                          }
+                        },
+                        onError: (error) {
+                          setState(() => _isListening = false);
+                        },
+                      );
+                      if (available) {
+                        setState(() => _isListening = true);
+                        _speech.listen(onResult: (result) {
+                          setState(() {
+                            _textController.text = result.recognizedWords;
+                          });
+                        });
+                      }
+                    } else {
+                      setState(() => _isListening = false);
+                      await _speech.stop();
+                    }
                   },
                 ),
               ),

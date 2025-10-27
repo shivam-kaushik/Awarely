@@ -3,6 +3,7 @@ import 'dart:async';
 
 import '../screens/onboarding_screen.dart';
 import '../screens/home_screen.dart';
+import '../../core/services/permission_service.dart';
 
 /// Splash screen shown on app launch
 class SplashScreen extends StatefulWidget {
@@ -42,6 +43,12 @@ class _SplashScreenState extends State<SplashScreen>
     );
 
     _controller.forward();
+    // After the first frame, ensure notification permission is requested and
+    // show a prompt to open settings if the permission was denied.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await PermissionService().ensureNotificationPermission(context);
+    });
+
     _navigateToNext();
   }
 

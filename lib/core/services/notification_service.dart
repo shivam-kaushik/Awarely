@@ -1,4 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/foundation.dart';
 import 'package:timezone/timezone.dart' as tz;
 
 import '../../core/constants/app_constants.dart';
@@ -59,8 +60,7 @@ class NotificationService {
 
     await _notifications
         .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >()
+            AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(androidChannel);
   }
 
@@ -78,6 +78,8 @@ class NotificationService {
     required String body,
     String? payload,
   }) async {
+    // Debug log
+    debugPrint('Showing notification id=$id title="$title" payload=$payload');
     const androidDetails = AndroidNotificationDetails(
       AppConstants.notificationChannelId,
       AppConstants.notificationChannelName,
@@ -110,6 +112,9 @@ class NotificationService {
     required DateTime scheduledTime,
     String? payload,
   }) async {
+    // Debug log
+    debugPrint(
+        'Scheduling notification id=$id title="$title" at $scheduledTime payload=$payload');
     const androidDetails = AndroidNotificationDetails(
       AppConstants.notificationChannelId,
       AppConstants.notificationChannelName,
@@ -157,8 +162,7 @@ class NotificationService {
   Future<bool> requestPermissions() async {
     final result = await _notifications
         .resolvePlatformSpecificImplementation<
-          IOSFlutterLocalNotificationsPlugin
-        >()
+            IOSFlutterLocalNotificationsPlugin>()
         ?.requestPermissions(alert: true, badge: true, sound: true);
 
     return result ?? true;

@@ -5,6 +5,7 @@ import '../providers/reminder_provider.dart';
 import '../widgets/reminder_card.dart';
 import 'add_reminder_screen.dart';
 import 'analytics_screen.dart';
+import 'settings_screen.dart';
 
 /// Home screen - main dashboard
 class HomeScreen extends StatefulWidget {
@@ -55,7 +56,9 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             onPressed: () {
-              // Navigate to settings
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (c) => const SettingsScreen()),
+              );
             },
             tooltip: 'Settings',
           ),

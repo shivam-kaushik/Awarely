@@ -1,0 +1,195 @@
+import 'package:flutter/material.dart';
+
+import '../../core/services/notification_service.dart';
+import '../../core/services/permission_service.dart';
+
+/// Settings screen to manage permissions and notification diagnostics
+class SettingsScreen extends StatefulWidget {
+  const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen>
+    with WidgetsBindingObserver {
+  final PermissionService _permissionService = PermissionService();
+  final NotificationService _notificationService = NotificationService();
+
+  bool _notificationsEnabled = false;
+  bool _microphoneEnabled = false;
+  bool _locationEnabled = false;
+  bool _exactAlarmEnabled = false;
+  List<String> _pendingNotifications = [];
+  bool _loadingPending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refreshStatuses();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // When returning from system settings, refresh permission statuses
+    if (state == AppLifecycleState.resumed) {
+      _refreshStatuses();
+    }
+    super.didChangeAppLifecycleState(state);
+  }
+
+  Future<void> _refreshStatuses() async {
+    final notif = await _permissionService.hasNotificationPermission();
+    final mic = await _permissionService.hasMicrophonePermission();
+    final loc = await _permissionService.hasLocationPermission();
+    final exactAlarm = await _permissionService.hasExactAlarmPermission();
+
+    setState(() {
+      _notificationsEnabled = notif;
+      _microphoneEnabled = mic;
+      _locationEnabled = loc;
+      _exactAlarmEnabled = exactAlarm;
+    });
+
+    await _loadPendingNotifications();
+  }
+
+  Future<void> _loadPendingNotifications() async {
+    setState(() => _loadingPending = true);
+    try {
+      final pending = await _notificationService.getPendingNotifications();
+      setState(() {
+        _pendingNotifications = pending
+            .map((p) => '${p.id}: ${p.title ?? "(no title)"} @ ${p.body ?? ""}')
+            .toList();
+      });
+    } finally {
+      setState(() => _loadingPending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Settings'),
+      ),
+      body: RefreshIndicator(
+        onRefresh: _refreshStatuses,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            const Text('Permissions',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            ListTile(
+              title: const Text('Notifications'),
+              subtitle: Text(_notificationsEnabled ? 'Enabled' : 'Disabled'),
+              trailing: ElevatedButton(
+                onPressed: () async {
+                  final granted =
+                      await _permissionService.ensureNotificationPermission(
+                    context,
+                    rationale:
+                        'Notifications are used to deliver reminders. Please enable them.',
+                  );
+                  if (granted) {
+                    setState(() => _notificationsEnabled = true);
+                  }
+                },
+                child: const Text('Manage'),
+              ),
+            ),
+            ListTile(
+              title: const Text('Exact Alarms'),
+              subtitle: Text(_exactAlarmEnabled ? 'Enabled' : 'Disabled'),
+              trailing: ElevatedButton(
+                onPressed: () async {
+                  final granted =
+                      await _permissionService.ensureExactAlarmPermission(
+                    context,
+                    rationale:
+                        'Exact alarms are needed to deliver reminders at the precise time.',
+                  );
+                  if (granted) {
+                    setState(() => _exactAlarmEnabled = true);
+                  }
+                },
+                child: const Text('Manage'),
+              ),
+            ),
+            ListTile(
+              title: const Text('Microphone'),
+              subtitle: Text(_microphoneEnabled ? 'Enabled' : 'Disabled'),
+              trailing: ElevatedButton(
+                onPressed: () async {
+                  final granted =
+                      await _permissionService.ensureMicrophonePermission(
+                    context,
+                    rationale: 'Microphone is needed for voice input.',
+                  );
+                  if (granted) setState(() => _microphoneEnabled = true);
+                },
+                child: const Text('Manage'),
+              ),
+            ),
+            ListTile(
+              title: const Text('Location'),
+              subtitle: Text(_locationEnabled ? 'Enabled' : 'Disabled'),
+              trailing: ElevatedButton(
+                onPressed: () async {
+                  final granted =
+                      await _permissionService.ensureLocationPermission(
+                    context,
+                    rationale: 'Location is needed for place-based reminders.',
+                  );
+                  if (granted) setState(() => _locationEnabled = true);
+                },
+                child: const Text('Manage'),
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text('Notifications diagnostics',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            ListTile(
+              title: const Text('Pending scheduled notifications'),
+              subtitle: _loadingPending
+                  ? const Text('Loading...')
+                  : _pendingNotifications.isEmpty
+                      ? const Text('No pending scheduled notifications')
+                      : Text('${_pendingNotifications.length} pending'),
+              trailing: IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: _loadPendingNotifications,
+              ),
+            ),
+            if (_pendingNotifications.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              ..._pendingNotifications.map((s) => Card(
+                    child: ListTile(
+                      title: Text(s),
+                    ),
+                  )),
+            ],
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () async {
+                await _permissionService.openSettings();
+              },
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('Open App Settings'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

@@ -18,8 +18,8 @@ class ReminderProvider with ChangeNotifier {
   ReminderProvider({
     required ReminderRepository reminderRepository,
     required NotificationService notificationService,
-  }) : _reminderRepository = reminderRepository,
-       _notificationService = notificationService;
+  })  : _reminderRepository = reminderRepository,
+        _notificationService = notificationService;
 
   // Getters
   List<Reminder> get reminders => _reminders;
@@ -76,6 +76,9 @@ class ReminderProvider with ChangeNotifier {
           scheduledTime: reminder.timeAt!,
           payload: reminder.id,
         );
+        // Debug log to help trace scheduling in device logs
+        debugPrint(
+            'Scheduled notification for reminder ${reminder.id} at ${reminder.timeAt} (id=${reminder.id.hashCode})');
       }
 
       // Reload reminders
@@ -93,6 +96,16 @@ class ReminderProvider with ChangeNotifier {
   Future<String?> createReminder(Reminder reminder) async {
     try {
       final id = await _reminderRepository.createReminder(reminder);
+      // Schedule notification if time-based reminder created via UI
+      if (reminder.timeAt != null) {
+        await _notificationService.scheduleNotification(
+          id: reminder.id.hashCode,
+          title: 'Reminder',
+          body: reminder.text,
+          scheduledTime: reminder.timeAt!,
+          payload: reminder.id,
+        );
+      }
       await loadReminders();
       return id;
     } catch (e) {

@@ -6,6 +6,7 @@ import 'package:workmanager/workmanager.dart';
 
 import 'core/services/notification_service.dart';
 import 'core/services/permission_service.dart';
+import 'core/services/trigger_engine.dart';
 import 'data/database/database_helper.dart';
 import 'data/repositories/reminder_repository.dart';
 import 'presentation/providers/reminder_provider.dart';
@@ -22,6 +23,18 @@ void callbackDispatcher() {
       await DatabaseHelper.instance.database;
       final notificationService = NotificationService();
       await notificationService.initialize();
+
+      // Ensure timezone data is available in background isolate
+      tz.initializeTimeZones();
+
+      // Initialize repository and trigger engine to run background checks
+      final reminderRepository = ReminderRepository();
+      final triggerEngine = TriggerEngine(
+        reminderRepository: reminderRepository,
+        notificationService: notificationService,
+      );
+
+      await triggerEngine.runBackgroundChecks();
 
       // Check context and trigger reminders
       // This will be implemented by the TriggerEngine
@@ -58,6 +71,9 @@ void main() async {
   // Initialize notification service
   final notificationService = NotificationService();
   await notificationService.initialize();
+  // Request notification permission (Android 13+ / iOS)
+  final permissionService = PermissionService();
+  await permissionService.requestNotificationPermission();
 
   // Set preferred orientations
   await SystemChrome.setPreferredOrientations([
