@@ -1,12 +1,13 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide TimeOfDay;
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
-import '../../core/services/notification_service.dart';
 import '../providers/reminder_provider.dart';
 import '../../core/services/nlu_parser.dart';
+import '../../core/services/gpt_nlu_service.dart';
 import '../../data/models/reminder.dart';
 import '../../core/services/permission_service.dart';
+import '../widgets/smart_reminder_dialog.dart';
 
 /// Add reminder screen with natural language input
 class AddReminderScreen extends StatefulWidget {
@@ -34,43 +35,12 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
     super.dispose();
   }
 
-  // Add this method to test notifications
-  Future<void> _testNotification() async {
-    final notificationService = NotificationService();
-
-    // Test immediate notification
-    await notificationService.showNotification(
-      id: 999999,
-      title: 'Test Notification',
-      body: 'If you see this, notifications work!',
-    );
-
-    // Test scheduled notification (1 minute from now)
-    final testTime = DateTime.now().add(const Duration(minutes: 1));
-    await notificationService.scheduleNotification(
-      id: 888888,
-      title: 'Test Scheduled',
-      body: 'This should appear in 1 minute',
-      scheduledTime: testTime,
-    );
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Test notifications scheduled. Check in 1 minute!'),
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    }
-  }
-
   Future<void> _createReminder() async {
     final text = _textController.text.trim();
 
     if (text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a reminder')),
-      );
+      // Show smart dialog for manual entry
+      _showSmartDialog();
       return;
     }
 
@@ -91,55 +61,150 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
       return;
     }
 
-    if (!NLUParser.hasValidIntent(text)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Please provide a clear task description')),
-      );
-      return;
-    }
-
     setState(() {
       _isCreating = true;
     });
 
-    final reminderProvider = context.read<ReminderProvider>();
+    try {
+      // First try GPT-powered parsing
+      final gptParsed = await GptNluService.parseReminderText(text);
 
-    // Parse using NLU to allow editing of parsed time
-    final parsed = NLUParser.parseReminderText(text);
+      if (gptParsed != null) {
+        debugPrint('✅ GPT parsed: $gptParsed');
 
-    // If parsed time exists, ask user to confirm or edit
-    Reminder finalReminder = parsed;
-    if (parsed.timeAt != null) {
-      final picked = await showTimePicker(
-        context: context,
-        initialTime: TimeOfDay.fromDateTime(parsed.timeAt!),
-      );
-      if (picked != null) {
-        final now = DateTime.now();
-        final newDate = DateTime(
-          now.year,
-          now.month,
-          now.day,
-          picked.hour,
-          picked.minute,
-        );
-        // If user picks a time that has already passed today, schedule for tomorrow
-        var scheduled = newDate;
-        if (scheduled.isBefore(now)) {
-          scheduled = scheduled.add(const Duration(days: 1));
+        // Convert time range strings to DateTime
+        DateTime? timeRangeStart;
+        DateTime? timeRangeEnd;
+
+        if (gptParsed.timeRangeStart != null) {
+          final parts = gptParsed.timeRangeStart!.split(':');
+          final now = DateTime.now();
+          timeRangeStart = DateTime(now.year, now.month, now.day,
+              int.parse(parts[0]), int.parse(parts[1]));
         }
-        finalReminder = parsed.copyWith(timeAt: scheduled);
+
+        if (gptParsed.timeRangeEnd != null) {
+          final parts = gptParsed.timeRangeEnd!.split(':');
+          final now = DateTime.now();
+          timeRangeEnd = DateTime(now.year, now.month, now.day,
+              int.parse(parts[0]), int.parse(parts[1]));
+        }
+
+        // Convert parsed data to Reminder object
+        final reminder = Reminder(
+          text: gptParsed.title,
+          timeAt: gptParsed.dateTime,
+          priority: gptParsed.priority ?? ReminderPriority.medium,
+          category: gptParsed.category ?? ReminderCategory.other,
+          repeatInterval: gptParsed.repeatInterval,
+          repeatUnit: gptParsed.repeatUnit,
+          repeatEndDate: gptParsed.repeatEndDate,
+          repeatOnDays: gptParsed.repeatOnDays,
+          timeRangeStart: timeRangeStart,
+          timeRangeEnd: timeRangeEnd,
+          preferredTimeOfDay: gptParsed.preferredTimeOfDay,
+        );
+
+        // Show smart dialog for confirmation/editing
+        final result = await showDialog<Reminder>(
+          context: context,
+          builder: (context) => SmartReminderDialog(reminder: reminder),
+        );
+
+        if (result == null) {
+          setState(() => _isCreating = false);
+          return;
+        }
+
+        final reminderProvider = context.read<ReminderProvider>();
+        final id = await reminderProvider.createReminder(result);
+
+        if (!mounted) return;
+
+        setState(() => _isCreating = false);
+
+        if (id != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Reminder created successfully!')),
+          );
+          Navigator.of(context).pop();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content:
+                  Text(reminderProvider.error ?? 'Failed to create reminder'),
+            ),
+          );
+        }
+      } else {
+        // Fallback to basic NLU parser
+        if (!NLUParser.hasValidIntent(text)) {
+          setState(() => _isCreating = false);
+          _showSmartDialog(initialText: text);
+          return;
+        }
+
+        final parsed = NLUParser.parseReminderText(text);
+        final result = await showDialog<Reminder>(
+          context: context,
+          builder: (context) => SmartReminderDialog(reminder: parsed),
+        );
+
+        if (result == null) {
+          setState(() => _isCreating = false);
+          return;
+        }
+
+        final reminderProvider = context.read<ReminderProvider>();
+        final id = await reminderProvider.createReminder(result);
+
+        if (!mounted) return;
+
+        setState(() => _isCreating = false);
+
+        if (id != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Reminder created successfully!')),
+          );
+          Navigator.of(context).pop();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content:
+                  Text(reminderProvider.error ?? 'Failed to create reminder'),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error creating reminder: $e');
+      setState(() => _isCreating = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
       }
     }
+  }
 
-    final id = await reminderProvider.createReminder(finalReminder);
+  Future<void> _showSmartDialog({String? initialText}) async {
+    final result = await showDialog<Reminder>(
+      context: context,
+      builder: (context) => SmartReminderDialog(
+        reminder: initialText != null ? Reminder(text: initialText) : null,
+      ),
+    );
+
+    if (result == null) return;
+
+    setState(() => _isCreating = true);
+
+    final reminderProvider = context.read<ReminderProvider>();
+    final id = await reminderProvider.createReminder(result);
 
     if (!mounted) return;
 
-    setState(() {
-      _isCreating = false;
-    });
+    setState(() => _isCreating = false);
 
     if (id != null) {
       ScaffoldMessenger.of(context).showSnackBar(

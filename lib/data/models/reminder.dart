@@ -1,5 +1,144 @@
 import 'package:uuid/uuid.dart';
 
+/// Priority levels for reminders
+enum ReminderPriority {
+  low,
+  medium,
+  high,
+  critical;
+
+  String get displayName {
+    switch (this) {
+      case ReminderPriority.low:
+        return 'Low';
+      case ReminderPriority.medium:
+        return 'Medium';
+      case ReminderPriority.high:
+        return 'High';
+      case ReminderPriority.critical:
+        return 'Critical';
+    }
+  }
+
+  String get emoji {
+    switch (this) {
+      case ReminderPriority.low:
+        return '🟢';
+      case ReminderPriority.medium:
+        return '🟡';
+      case ReminderPriority.high:
+        return '🟠';
+      case ReminderPriority.critical:
+        return '🔴';
+    }
+  }
+}
+
+/// Reminder categories
+enum ReminderCategory {
+  health,
+  work,
+  study,
+  personal,
+  shopping,
+  family,
+  other;
+
+  String get displayName {
+    switch (this) {
+      case ReminderCategory.health:
+        return 'Health';
+      case ReminderCategory.work:
+        return 'Work';
+      case ReminderCategory.study:
+        return 'Study';
+      case ReminderCategory.personal:
+        return 'Personal';
+      case ReminderCategory.shopping:
+        return 'Shopping';
+      case ReminderCategory.family:
+        return 'Family';
+      case ReminderCategory.other:
+        return 'Other';
+    }
+  }
+
+  String get emoji {
+    switch (this) {
+      case ReminderCategory.health:
+        return '💊';
+      case ReminderCategory.work:
+        return '💼';
+      case ReminderCategory.study:
+        return '📚';
+      case ReminderCategory.personal:
+        return '👤';
+      case ReminderCategory.shopping:
+        return '🛒';
+      case ReminderCategory.family:
+        return '👨‍👩‍👧‍👦';
+      case ReminderCategory.other:
+        return '📌';
+    }
+  }
+}
+
+/// Time of day preferences
+enum TimeOfDay {
+  morning, // 6 AM - 12 PM
+  afternoon, // 12 PM - 5 PM
+  evening, // 5 PM - 9 PM
+  night, // 9 PM - 12 AM
+  lateNight; // 12 AM - 6 AM
+
+  String get displayName {
+    switch (this) {
+      case TimeOfDay.morning:
+        return 'Morning (6 AM - 12 PM)';
+      case TimeOfDay.afternoon:
+        return 'Afternoon (12 PM - 5 PM)';
+      case TimeOfDay.evening:
+        return 'Evening (5 PM - 9 PM)';
+      case TimeOfDay.night:
+        return 'Night (9 PM - 12 AM)';
+      case TimeOfDay.lateNight:
+        return 'Late Night (12 AM - 6 AM)';
+    }
+  }
+
+  /// Get start hour for this time of day
+  int get startHour {
+    switch (this) {
+      case TimeOfDay.morning:
+        return 6;
+      case TimeOfDay.afternoon:
+        return 12;
+      case TimeOfDay.evening:
+        return 17;
+      case TimeOfDay.night:
+        return 21;
+      case TimeOfDay.lateNight:
+        return 0;
+    }
+  }
+
+  /// Get end hour for this time of day
+  int get endHour {
+    switch (this) {
+      case TimeOfDay.morning:
+        return 12;
+      case TimeOfDay.afternoon:
+        return 17;
+      case TimeOfDay.evening:
+        return 21;
+      case TimeOfDay.night:
+        return 24;
+      case TimeOfDay.lateNight:
+        return 6;
+    }
+  }
+}
+
 /// Reminder model representing a context-aware reminder
 class Reminder {
   final String id;
@@ -16,9 +155,26 @@ class Reminder {
   final DateTime createdAt;
   final DateTime? lastTriggeredAt;
   final int triggerCount;
+
+  // Recurrence fields
   final int?
       repeatInterval; // How many units to repeat (e.g., 2 for "every 2 hours")
   final String? repeatUnit; // 'minutes', 'hours', 'days', 'weeks'
+  final DateTime? repeatEndDate; // When to stop repeating
+  final List<int>? repeatOnDays; // Days of week (1=Monday, 7=Sunday)
+
+  // Time range fields
+  final DateTime? timeRangeStart; // Start of time range (e.g., 9 AM)
+  final DateTime? timeRangeEnd; // End of time range (e.g., 6 PM)
+  final TimeOfDay? preferredTimeOfDay; // Morning, Afternoon, etc.
+
+  // Organization fields
+  final ReminderPriority priority;
+  final ReminderCategory category;
+
+  // Smart features
+  final bool isPaused; // Temporarily pause recurring reminders
+  final int skipCount; // How many times user has skipped
 
   Reminder({
     String? id,
@@ -37,6 +193,15 @@ class Reminder {
     this.triggerCount = 0,
     this.repeatInterval,
     this.repeatUnit,
+    this.repeatEndDate,
+    this.repeatOnDays,
+    this.timeRangeStart,
+    this.timeRangeEnd,
+    this.preferredTimeOfDay,
+    this.priority = ReminderPriority.medium,
+    this.category = ReminderCategory.other,
+    this.isPaused = false,
+    this.skipCount = 0,
   })  : id = id ?? const Uuid().v4(),
         createdAt = createdAt ?? DateTime.now();
 
@@ -63,6 +228,35 @@ class Reminder {
       triggerCount: map['triggerCount'] as int? ?? 0,
       repeatInterval: map['repeatInterval'] as int?,
       repeatUnit: map['repeatUnit'] as String?,
+      repeatEndDate: map['repeatEndDate'] != null
+          ? DateTime.parse(map['repeatEndDate'] as String)
+          : null,
+      repeatOnDays: map['repeatOnDays'] != null
+          ? (map['repeatOnDays'] as String)
+              .split(',')
+              .map((e) => int.parse(e))
+              .toList()
+          : null,
+      timeRangeStart: map['timeRangeStart'] != null
+          ? DateTime.parse(map['timeRangeStart'] as String)
+          : null,
+      timeRangeEnd: map['timeRangeEnd'] != null
+          ? DateTime.parse(map['timeRangeEnd'] as String)
+          : null,
+      preferredTimeOfDay: map['preferredTimeOfDay'] != null
+          ? TimeOfDay.values
+              .firstWhere((e) => e.name == map['preferredTimeOfDay'] as String)
+          : null,
+      priority: map['priority'] != null
+          ? ReminderPriority.values
+              .firstWhere((e) => e.name == map['priority'] as String)
+          : ReminderPriority.medium,
+      category: map['category'] != null
+          ? ReminderCategory.values
+              .firstWhere((e) => e.name == map['category'] as String)
+          : ReminderCategory.other,
+      isPaused: (map['isPaused'] as int?) == 1,
+      skipCount: map['skipCount'] as int? ?? 0,
     );
   }
 
@@ -85,6 +279,15 @@ class Reminder {
       'triggerCount': triggerCount,
       'repeatInterval': repeatInterval,
       'repeatUnit': repeatUnit,
+      'repeatEndDate': repeatEndDate?.toIso8601String(),
+      'repeatOnDays': repeatOnDays?.join(','),
+      'timeRangeStart': timeRangeStart?.toIso8601String(),
+      'timeRangeEnd': timeRangeEnd?.toIso8601String(),
+      'preferredTimeOfDay': preferredTimeOfDay?.name,
+      'priority': priority.name,
+      'category': category.name,
+      'isPaused': isPaused ? 1 : 0,
+      'skipCount': skipCount,
     };
   }
 
@@ -103,11 +306,33 @@ class Reminder {
   String getContextDescription() {
     final parts = <String>[];
 
+    // Priority
+    parts.add('${priority.emoji} ${priority.displayName}');
+
+    // Recurrence with end date
     if (repeatInterval != null && repeatUnit != null) {
-      parts.add('Every $repeatInterval $repeatUnit');
+      String recurText = 'Every $repeatInterval $repeatUnit';
+
+      if (timeRangeStart != null && timeRangeEnd != null) {
+        recurText +=
+            ' (${_formatTime(timeRangeStart!)} - ${_formatTime(timeRangeEnd!)})';
+      } else if (preferredTimeOfDay != null) {
+        recurText += ' (${preferredTimeOfDay!.displayName})';
+      }
+
+      if (repeatEndDate != null) {
+        recurText += ' until ${_formatDate(repeatEndDate!)}';
+      }
+
+      if (repeatOnDays != null && repeatOnDays!.isNotEmpty) {
+        recurText += ' on ${_formatDays(repeatOnDays!)}';
+      }
+
+      parts.add(recurText);
     } else if (timeAt != null) {
-      parts.add('at ${_formatTime(timeAt!)}');
+      parts.add('at ${_formatTime(timeAt!)} on ${_formatDate(timeAt!)}');
     }
+
     if (onLeaveContext && geofenceId != null) {
       parts.add('when leaving');
     }
@@ -118,14 +343,42 @@ class Reminder {
       parts.add('via Wi-Fi: $wifiSsid');
     }
 
+    if (isPaused) {
+      parts.add('⏸️ Paused');
+    }
+
     return parts.isEmpty ? 'No context set' : parts.join(' • ');
   }
 
   String _formatTime(DateTime time) {
-    final hour = time.hour > 12 ? time.hour - 12 : time.hour;
+    final hour =
+        time.hour > 12 ? time.hour - 12 : (time.hour == 0 ? 12 : time.hour);
     final minute = time.minute.toString().padLeft(2, '0');
     final period = time.hour >= 12 ? 'PM' : 'AM';
     return '$hour:$minute $period';
+  }
+
+  String _formatDate(DateTime date) {
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+    return '${months[date.month - 1]} ${date.day}, ${date.year}';
+  }
+
+  String _formatDays(List<int> days) {
+    const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return days.map((d) => dayNames[d - 1]).join(', ');
   }
 
   /// Check if this is a recurring reminder
@@ -147,6 +400,15 @@ class Reminder {
     int? triggerCount,
     int? repeatInterval,
     String? repeatUnit,
+    DateTime? repeatEndDate,
+    List<int>? repeatOnDays,
+    DateTime? timeRangeStart,
+    DateTime? timeRangeEnd,
+    TimeOfDay? preferredTimeOfDay,
+    ReminderPriority? priority,
+    ReminderCategory? category,
+    bool? isPaused,
+    int? skipCount,
   }) {
     return Reminder(
       id: id,
@@ -165,6 +427,15 @@ class Reminder {
       triggerCount: triggerCount ?? this.triggerCount,
       repeatInterval: repeatInterval ?? this.repeatInterval,
       repeatUnit: repeatUnit ?? this.repeatUnit,
+      repeatEndDate: repeatEndDate ?? this.repeatEndDate,
+      repeatOnDays: repeatOnDays ?? this.repeatOnDays,
+      timeRangeStart: timeRangeStart ?? this.timeRangeStart,
+      timeRangeEnd: timeRangeEnd ?? this.timeRangeEnd,
+      preferredTimeOfDay: preferredTimeOfDay ?? this.preferredTimeOfDay,
+      priority: priority ?? this.priority,
+      category: category ?? this.category,
+      isPaused: isPaused ?? this.isPaused,
+      skipCount: skipCount ?? this.skipCount,
     );
   }
 }

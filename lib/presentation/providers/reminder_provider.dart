@@ -219,8 +219,24 @@ class ReminderProvider with ChangeNotifier {
   /// Delete reminder
   Future<bool> deleteReminder(String id) async {
     try {
+      // Find the reminder to check if it's recurring
+      final reminder = _reminders.firstWhere((r) => r.id == id);
+
+      // Cancel all alarms for this reminder
+      if (reminder.isRecurring) {
+        // Cancel all 50 occurrences
+        for (int i = 0; i < 50; i++) {
+          final notificationId = reminder.id.hashCode + i;
+          await AlarmService.cancelAlarm(notificationId);
+        }
+        debugPrint('🗑️ Cancelled 50 recurring alarms for reminder $id');
+      } else {
+        // Cancel single alarm
+        await AlarmService.cancelAlarm(id.hashCode);
+        debugPrint('🗑️ Cancelled alarm for reminder $id');
+      }
+
       await _reminderRepository.deleteReminder(id);
-      await AlarmService.cancelAlarm(id.hashCode);
       await loadReminders();
       return true;
     } catch (e) {
@@ -233,21 +249,49 @@ class ReminderProvider with ChangeNotifier {
   /// Toggle reminder enabled state
   Future<bool> toggleReminder(String id, bool enabled) async {
     try {
+      final reminder = _reminders.firstWhere((r) => r.id == id);
+
+      // Debug: Log reminder details
+      debugPrint(
+          '🔄 Toggling reminder $id to ${enabled ? "enabled" : "disabled"}');
+      debugPrint('   Text: ${reminder.text}');
+      debugPrint('   IsRecurring: ${reminder.isRecurring}');
+      debugPrint('   RepeatInterval: ${reminder.repeatInterval}');
+      debugPrint('   RepeatUnit: ${reminder.repeatUnit}');
+
       await _reminderRepository.toggleReminder(id, enabled);
 
       if (!enabled) {
-        await AlarmService.cancelAlarm(id.hashCode);
+        // Cancel all alarms for this reminder
+        if (reminder.isRecurring) {
+          // Cancel all 50 occurrences
+          debugPrint('   Cancelling 50 recurring alarms...');
+          for (int i = 0; i < 50; i++) {
+            final notificationId = reminder.id.hashCode + i;
+            await AlarmService.cancelAlarm(notificationId);
+          }
+          debugPrint('✅ Cancelled 50 recurring alarms for reminder $id');
+        } else {
+          debugPrint('   Cancelling single alarm...');
+          await AlarmService.cancelAlarm(id.hashCode);
+          debugPrint('✅ Cancelled single alarm for reminder $id');
+        }
       } else {
         // Reschedule if time-based
-        final reminder = _reminders.firstWhere((r) => r.id == id);
         if (reminder.timeAt != null) {
-          await AlarmService.scheduleExactAlarm(
-            id: reminder.id.hashCode,
-            title: 'Reminder',
-            body: reminder.text,
-            scheduledTime: reminder.timeAt!,
-            payload: reminder.id,
-          );
+          if (reminder.isRecurring) {
+            debugPrint('   Rescheduling recurring notifications...');
+            await _scheduleRecurringNotifications(reminder);
+          } else {
+            debugPrint('   Rescheduling single notification...');
+            await AlarmService.scheduleExactAlarm(
+              id: reminder.id.hashCode,
+              title: 'Reminder',
+              body: reminder.text,
+              scheduledTime: reminder.timeAt!,
+              payload: reminder.id,
+            );
+          }
         }
       }
 

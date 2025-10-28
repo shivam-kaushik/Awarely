@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:workmanager/workmanager.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'core/services/notification_service.dart';
 import 'core/services/permission_service.dart';
@@ -50,6 +51,14 @@ void callbackDispatcher() {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Load environment variables
+  try {
+    await dotenv.load(fileName: '.env');
+    debugPrint('✅ .env file loaded successfully');
+  } catch (e) {
+    debugPrint('⚠️ .env file not found or error loading: $e');
+  }
 
   // Initialize timezone data for scheduled notifications
   tz.initializeTimeZones();

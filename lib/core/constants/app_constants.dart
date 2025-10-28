@@ -7,7 +7,7 @@ class AppConstants {
 
   // Database
   static const String dbName = 'awarely.db';
-  static const int dbVersion = 2; // Updated for recurrence support
+  static const int dbVersion = 3; // Updated for smart reminder features
 
   // Tables
   static const String remindersTable = 'reminders';

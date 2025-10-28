@@ -32,7 +32,7 @@ class DatabaseHelper {
 
   /// Create database tables
   Future<void> _createDB(Database db, int version) async {
-    // Reminders table
+    // Reminders table with all fields
     await db.execute('''
       CREATE TABLE ${AppConstants.remindersTable} (
         id TEXT PRIMARY KEY,
@@ -50,7 +50,16 @@ class DatabaseHelper {
         lastTriggeredAt TEXT,
         triggerCount INTEGER DEFAULT 0,
         repeatInterval INTEGER,
-        repeatUnit TEXT
+        repeatUnit TEXT,
+        repeatEndDate TEXT,
+        repeatOnDays TEXT,
+        timeRangeStart TEXT,
+        timeRangeEnd TEXT,
+        preferredTimeOfDay TEXT,
+        priority TEXT DEFAULT 'medium',
+        category TEXT DEFAULT 'other',
+        isPaused INTEGER DEFAULT 0,
+        skipCount INTEGER DEFAULT 0
       )
     ''');
 
@@ -119,6 +128,31 @@ class DatabaseHelper {
       } catch (e) {
         // Column might already exist, ignore error
         print('repeatUnit column already exists or error: $e');
+      }
+    }
+
+    if (oldVersion < 3) {
+      // Add smart reminder features
+      final newColumns = [
+        'repeatEndDate TEXT',
+        'repeatOnDays TEXT',
+        'timeRangeStart TEXT',
+        'timeRangeEnd TEXT',
+        'preferredTimeOfDay TEXT',
+        "priority TEXT DEFAULT 'medium'",
+        "category TEXT DEFAULT 'other'",
+        'isPaused INTEGER DEFAULT 0',
+        'skipCount INTEGER DEFAULT 0',
+      ];
+
+      for (var column in newColumns) {
+        try {
+          await db.execute(
+            'ALTER TABLE ${AppConstants.remindersTable} ADD COLUMN $column',
+          );
+        } catch (e) {
+          print('Column $column already exists or error: $e');
+        }
       }
     }
   }

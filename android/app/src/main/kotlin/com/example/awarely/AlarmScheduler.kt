@@ -72,19 +72,31 @@ class AlarmScheduler(private val context: Context) {
 
     fun cancelAlarm(id: Int) {
         try {
+            // Create intent matching the one used during scheduling
+            // The intent must match exactly (same action, component, etc.) for PendingIntent lookup
             val intent = Intent(context, AlarmReceiver::class.java)
+            
+            // Use FLAG_NO_CREATE to retrieve the existing PendingIntent
+            // The request code (id) is the primary matching criterion
             val pendingIntent = PendingIntent.getBroadcast(
                 context,
                 id,
                 intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
             )
-            alarmManager.cancel(pendingIntent)
-            pendingIntent.cancel()
-            Log.d(TAG, "🗑️ Cancelled alarm: id=$id")
+            
+            if (pendingIntent != null) {
+                // Cancel the alarm
+                alarmManager.cancel(pendingIntent)
+                // Cancel the PendingIntent itself
+                pendingIntent.cancel()
+                Log.d(TAG, "✅ Successfully cancelled alarm: id=$id")
+            } else {
+                // This might happen if alarm already fired or was never scheduled
+                Log.w(TAG, "⚠️ No active alarm found to cancel: id=$id (may have already fired or expired)")
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to cancel alarm: ${e.message}")
-            e.printStackTrace()
+            Log.e(TAG, "❌ Failed to cancel alarm id=$id: ${e.message}", e)
         }
     }
 
