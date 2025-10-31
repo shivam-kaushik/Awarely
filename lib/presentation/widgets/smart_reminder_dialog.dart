@@ -3,14 +3,22 @@ import '../../data/models/reminder.dart' as model;
 import 'priority_selector.dart';
 import 'category_selector.dart';
 import 'time_selectors.dart';
+import '../screens/home_setup_screen.dart';
+import '../../core/services/home_detection_service.dart';
+import 'package:flutter/foundation.dart';
+import '../../data/models/saved_location.dart';
 
 /// Comprehensive reminder creation/edit dialog with all smart features
 class SmartReminderDialog extends StatefulWidget {
   final model.Reminder? reminder; // Null for new, populated for edit
+  // Optional suggestion for location-based reminders. Example:
+  // { 'context': 'home', 'latitude': 12.34, 'longitude': 56.78, 'radius': 150.0 }
+  final Map<String, dynamic>? locationSuggestion;
 
   const SmartReminderDialog({
     super.key,
     this.reminder,
+    this.locationSuggestion,
   });
 
   @override
@@ -21,6 +29,15 @@ class _SmartReminderDialogState extends State<SmartReminderDialog> {
   late TextEditingController _textController;
   late model.ReminderPriority _priority;
   late model.ReminderCategory _category;
+
+  // Location-related editor fields
+  bool _enableLocation = false;
+  bool _onLeaveContext = false;
+  bool _onArriveContext = false;
+  double? _geofenceLat;
+  double? _geofenceLng;
+  double? _geofenceRadius;
+  String? _locationContext;
 
   DateTime? _timeAt;
   bool _isRecurring = false;
@@ -51,6 +68,22 @@ class _SmartReminderDialogState extends State<SmartReminderDialog> {
     _timeRangeStart = reminder?.timeRangeStart;
     _timeRangeEnd = reminder?.timeRangeEnd;
     _preferredTimeOfDay = reminder?.preferredTimeOfDay;
+    // Initialize location-related fields from reminder or suggestion
+    _enableLocation = reminder?.geofenceId != null;
+    _onLeaveContext = reminder?.onLeaveContext ?? false;
+    _onArriveContext = reminder?.onArriveContext ?? false;
+    _geofenceLat = reminder?.geofenceLat;
+    _geofenceLng = reminder?.geofenceLng;
+    _geofenceRadius = reminder?.geofenceRadius;
+    _locationContext = reminder?.geofenceId; // may be 'home' or other id
+    // If a suggestion is provided and no geofence is set, store suggestion but keep disabled
+    if (!_enableLocation && widget.locationSuggestion != null) {
+      _locationContext = widget.locationSuggestion!['context'] as String?;
+      _geofenceLat = widget.locationSuggestion!['latitude'] as double?;
+      _geofenceLng = widget.locationSuggestion!['longitude'] as double?;
+      _geofenceRadius =
+          widget.locationSuggestion!['radius'] as double? ?? 150.0;
+    }
   }
 
   @override
@@ -127,9 +160,19 @@ class _SmartReminderDialogState extends State<SmartReminderDialog> {
       final now = DateTime.now();
       setState(() {
         _timeRangeStart = DateTime(
-            now.year, now.month, now.day, startTime.hour, startTime.minute);
+          now.year,
+          now.month,
+          now.day,
+          startTime.hour,
+          startTime.minute,
+        );
         _timeRangeEnd = DateTime(
-            now.year, now.month, now.day, endTime.hour, endTime.minute);
+          now.year,
+          now.month,
+          now.day,
+          endTime.hour,
+          endTime.minute,
+        );
       });
     }
   }
@@ -163,6 +206,13 @@ class _SmartReminderDialogState extends State<SmartReminderDialog> {
       timeRangeStart: _timeRangeStart,
       timeRangeEnd: _timeRangeEnd,
       preferredTimeOfDay: _preferredTimeOfDay,
+      // Location fields
+      geofenceId: _enableLocation ? (_locationContext ?? 'home') : null,
+      geofenceLat: _enableLocation ? _geofenceLat : null,
+      geofenceLng: _enableLocation ? _geofenceLng : null,
+      geofenceRadius: _enableLocation ? _geofenceRadius : null,
+      onLeaveContext: _onLeaveContext,
+      onArriveContext: _onArriveContext,
     );
 
     Navigator.of(context).pop(reminder);
@@ -225,6 +275,14 @@ class _SmartReminderDialogState extends State<SmartReminderDialog> {
                     ),
 
                     const SizedBox(height: 24),
+                    // Location suggestion / controls
+                    if (_onLeaveContext ||
+                        _onArriveContext ||
+                        widget.locationSuggestion != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12.0),
+                        child: _buildLocationSection(),
+                      ),
 
                     // Priority
                     PrioritySelector(
@@ -349,7 +407,7 @@ class _SmartReminderDialogState extends State<SmartReminderDialog> {
               Expanded(
                 flex: 3,
                 child: DropdownButtonFormField<String>(
-                  value: _repeatUnit ?? 'hours',
+                  initialValue: _repeatUnit ?? 'hours',
                   decoration: const InputDecoration(
                     labelText: 'Unit',
                     border: OutlineInputBorder(),
@@ -401,9 +459,9 @@ class _SmartReminderDialogState extends State<SmartReminderDialog> {
         TextButton.icon(
           onPressed: () => setState(() => _showAdvanced = !_showAdvanced),
           icon: Icon(_showAdvanced ? Icons.expand_less : Icons.expand_more),
-          label: Text(_showAdvanced
-              ? 'Hide Advanced Options'
-              : 'Show Advanced Options'),
+          label: Text(
+            _showAdvanced ? 'Hide Advanced Options' : 'Show Advanced Options',
+          ),
         ),
 
         if (_showAdvanced) ...[
@@ -494,10 +552,12 @@ class _SmartReminderDialogState extends State<SmartReminderDialog> {
 
       if (_timeRangeStart != null && _timeRangeEnd != null) {
         parts.add(
-            'between ${_formatTime(_timeRangeStart!)} and ${_formatTime(_timeRangeEnd!)}');
+          'between ${_formatTime(_timeRangeStart!)} and ${_formatTime(_timeRangeEnd!)}',
+        );
       } else if (_preferredTimeOfDay != null) {
         parts.add(
-            'during ${_preferredTimeOfDay!.displayName.split(' ')[0].toLowerCase()}');
+          'during ${_preferredTimeOfDay!.displayName.split(' ')[0].toLowerCase()}',
+        );
       }
 
       if (_repeatOnDays != null && _repeatOnDays!.isNotEmpty) {
@@ -517,6 +577,163 @@ class _SmartReminderDialogState extends State<SmartReminderDialog> {
       parts.isEmpty ? 'No schedule set' : parts.join(' '),
       style: const TextStyle(fontSize: 14),
     );
+  }
+
+  Widget _buildLocationSection() {
+    final suggested = widget.locationSuggestion != null;
+    final String locationLabel = _locationContext ??
+        (suggested
+            ? widget.locationSuggestion!['context'] as String
+            : 'location');
+
+    return Card(
+      color: Colors.grey.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.place, color: Theme.of(context).primaryColor),
+                const SizedBox(width: 8),
+                Expanded(
+                    child: Text('Location triggers',
+                        style: Theme.of(context).textTheme.titleMedium)),
+              ],
+            ),
+            const SizedBox(height: 8),
+
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text('Enable location triggers for this reminder'),
+              value: _enableLocation,
+              onChanged: (val) async {
+                if (val && (_geofenceLat == null || _geofenceLng == null)) {
+                  // Try to use suggestion or ask user to setup home
+                  if (suggested && widget.locationSuggestion != null) {
+                    setState(() {
+                      _geofenceLat =
+                          widget.locationSuggestion!['latitude'] as double?;
+                      _geofenceLng =
+                          widget.locationSuggestion!['longitude'] as double?;
+                      _geofenceRadius =
+                          widget.locationSuggestion!['radius'] as double? ??
+                              150.0;
+                      _locationContext =
+                          widget.locationSuggestion!['context'] as String? ??
+                              _locationContext;
+                      _enableLocation = true;
+                    });
+                    return;
+                  }
+
+                  // No suggestion available: navigate user to Home setup
+                  final shouldSetup = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Location not configured'),
+                      content: const Text(
+                          'To enable location triggers you need to set your home location. Would you like to set it up now?'),
+                      actions: [
+                        TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Cancel')),
+                        ElevatedButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('Setup')),
+                      ],
+                    ),
+                  );
+
+                  if (shouldSetup == true) {
+                    // Open HomeSetupScreen and then attempt to fetch home
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const HomeSetupScreen(),
+                      ),
+                    );
+                    await _applyHomeLocationFromService();
+                    if (_geofenceLat != null) {
+                      setState(() => _enableLocation = true);
+                    }
+                  }
+                } else {
+                  setState(() => _enableLocation = val);
+                }
+              },
+            ),
+
+            if (_enableLocation) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _geofenceLat != null && _geofenceLng != null
+                          ? 'Using $locationLabel (${_geofenceLat!.toStringAsFixed(4)}, ${_geofenceLng!.toStringAsFixed(4)})'
+                          : 'No location chosen',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton(
+                    onPressed: () async {
+                      // Allow user to (re)open home setup and fetch location
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const HomeSetupScreen(),
+                        ),
+                      );
+                      await _applyHomeLocationFromService();
+                      if (mounted) setState(() {});
+                    },
+                    child: const Text('Set / Update'),
+                  ),
+                ],
+              ),
+            ],
+
+            const SizedBox(height: 8),
+            // Leave/Arrive toggles
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text('When I leave $locationLabel'),
+              value: _onLeaveContext,
+              onChanged: (v) => setState(() => _onLeaveContext = v ?? false),
+            ),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text('When I arrive $locationLabel'),
+              value: _onArriveContext,
+              onChanged: (v) => setState(() => _onArriveContext = v ?? false),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _applyHomeLocationFromService() async {
+    final SavedLocation? home = await HomeDetectionService().getHomeLocation();
+    if (home != null) {
+      _geofenceLat = home.latitude;
+      _geofenceLng = home.longitude;
+      _geofenceRadius = home.radius;
+      _locationContext = home.name;
+      if (kDebugMode) {
+        debugPrint(
+            'SmartDialog: applied home location $_geofenceLat,$_geofenceLng');
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Home location not configured')),
+        );
+      }
+    }
   }
 
   String _formatTime(DateTime time) {
@@ -540,7 +757,7 @@ class _SmartReminderDialogState extends State<SmartReminderDialog> {
       'Sep',
       'Oct',
       'Nov',
-      'Dec'
+      'Dec',
     ];
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }

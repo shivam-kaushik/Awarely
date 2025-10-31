@@ -98,7 +98,7 @@ class PermissionService {
 
   /// Ensure location permission is granted; prompt user to open settings if blocked
   Future<bool> ensureLocationPermission(BuildContext context,
-      {bool requireAlways = false, String? rationale}) async {
+      {bool requireAlways = false, String? rationale,}) async {
     if (requireAlways) {
       final status = await Permission.locationAlways.status;
       if (status.isGranted) return true;
@@ -111,7 +111,7 @@ class PermissionService {
           return AlertDialog(
             title: const Text('Location permission required'),
             content: Text(rationale ??
-                'Background location access is required for location-based reminders. Please enable it in app settings.'),
+                'Background location access is required for location-based reminders. Please enable it in app settings.',),
             actions: [
               TextButton(
                 onPressed: () async {
@@ -142,7 +142,7 @@ class PermissionService {
           return AlertDialog(
             title: const Text('Location permission required'),
             content: Text(rationale ??
-                'Location access is required for location-based reminders. Please enable it in app settings.'),
+                'Location access is required for location-based reminders. Please enable it in app settings.',),
             actions: [
               TextButton(
                 onPressed: () async {
@@ -172,7 +172,7 @@ class PermissionService {
 
   /// Ensure notification permission is granted; if not, prompt the user to open settings
   Future<bool> ensureNotificationPermission(BuildContext context,
-      {String? rationale}) async {
+      {String? rationale,}) async {
     final status = await Permission.notification.status;
     if (status.isGranted) return true;
 
@@ -185,7 +185,7 @@ class PermissionService {
         return AlertDialog(
           title: const Text('Notifications permission required'),
           content: Text(rationale ??
-              'Notifications are required to deliver reminders. Please enable notifications in app settings.'),
+              'Notifications are required to deliver reminders. Please enable notifications in app settings.',),
           actions: [
             TextButton(
               onPressed: () async {
@@ -214,7 +214,7 @@ class PermissionService {
 
   /// Ensure microphone permission is granted, otherwise prompt user to open settings
   Future<bool> ensureMicrophonePermission(BuildContext context,
-      {String? rationale}) async {
+      {String? rationale,}) async {
     final status = await Permission.microphone.status;
     if (status.isGranted) return true;
 
@@ -228,7 +228,7 @@ class PermissionService {
         return AlertDialog(
           title: const Text('Microphone permission required'),
           content: Text(rationale ??
-              'Microphone access is required for voice input. Please enable it in app settings.'),
+              'Microphone access is required for voice input. Please enable it in app settings.',),
           actions: [
             TextButton(
               onPressed: () async {

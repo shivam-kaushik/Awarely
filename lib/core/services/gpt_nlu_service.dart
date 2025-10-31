@@ -19,7 +19,7 @@ class GptNluService {
           apiKey.isEmpty ||
           apiKey == 'your_openai_api_key_here') {
         debugPrint(
-            '⚠️ OpenAI API key not configured, falling back to basic parser');
+            '⚠️ OpenAI API key not configured, falling back to basic parser',);
         return _fallbackParser(text);
       }
 
@@ -60,7 +60,7 @@ class GptNluService {
         return ParsedReminderData.fromJson(parsed);
       } else {
         debugPrint(
-            '❌ GPT API error: ${response.statusCode} - ${response.body}');
+            '❌ GPT API error: ${response.statusCode} - ${response.body}',);
         return _fallbackParser(text);
       }
     } catch (e) {
@@ -82,7 +82,7 @@ Reminder text: "$text"
 Extract and return ONLY a JSON object with these fields (use null for missing data):
 
 {
-  "title": "cleaned reminder title without time/priority/category prefixes",
+  "title": "cleaned reminder title without time/priority/category/location prefixes",
   "dateTime": "ISO 8601 date-time string if specific time mentioned, else null",
   "priority": "Low|Medium|High|Critical or null",
   "category": "Health|Work|Study|Personal|Shopping|Family|Other or null",
@@ -93,7 +93,10 @@ Extract and return ONLY a JSON object with these fields (use null for missing da
   "repeatOnDays": [1-7 for Mon-Sun] or null (e.g., [1,2,3,4,5] for weekdays),
   "timeRangeStart": "HH:mm" or null (e.g., "09:00"),
   "timeRangeEnd": "HH:mm" or null (e.g., "18:00"),
-  "preferredTimeOfDay": "Morning|Afternoon|Evening|Night|LateNight" or null
+  "preferredTimeOfDay": "Morning|Afternoon|Evening|Night|LateNight" or null,
+  "locationContext": "home|work|gym" or null (if location mentioned),
+  "onLeave": true/false (true if "leaving", "when I leave", "before leaving"),
+  "onArrive": true/false (true if "arriving", "when I arrive", "when I get to")
 }
 
 Examples:
@@ -108,12 +111,20 @@ Input: "Remind me to drink water every 2 hours during work hours"
 Output: {"title":"Drink water","dateTime":null,"priority":"Medium","category":"Health","isRecurring":true,"repeatInterval":2,"repeatUnit":"hours","repeatEndDate":null,"repeatOnDays":[1,2,3,4,5],"timeRangeStart":"09:00","timeRangeEnd":"18:00","preferredTimeOfDay":null}
 
 Input: "Team meeting every Monday at 10 AM"
-Output: {"title":"Team meeting","dateTime":"${_formatNextMonday(now, 10, 0)}","priority":"Medium","category":"Work","isRecurring":true,"repeatInterval":1,"repeatUnit":"weeks","repeatEndDate":null,"repeatOnDays":[1],"timeRangeStart":null,"timeRangeEnd":null,"preferredTimeOfDay":"Morning"}
+Output: {"title":"Team meeting","dateTime":"${_formatNextMonday(now, 10, 0)}","priority":"Medium","category":"Work","isRecurring":true,"repeatInterval":1,"repeatUnit":"weeks","repeatEndDate":null,"repeatOnDays":[1],"timeRangeStart":null,"timeRangeEnd":null,"preferredTimeOfDay":"Morning","locationContext":null,"onLeave":false,"onArrive":false}
+
+Input: "Remind me to take my keys when leaving home"
+Output: {"title":"Take my keys","dateTime":null,"priority":"Medium","category":"Personal","isRecurring":false,"repeatInterval":null,"repeatUnit":null,"repeatEndDate":null,"repeatOnDays":null,"timeRangeStart":null,"timeRangeEnd":null,"preferredTimeOfDay":null,"locationContext":"home","onLeave":true,"onArrive":false}
+
+Input: "Remind me to water plants when I get home"
+Output: {"title":"Water plants","dateTime":null,"priority":"Medium","category":"Personal","isRecurring":false,"repeatInterval":null,"repeatUnit":null,"repeatEndDate":null,"repeatOnDays":null,"timeRangeStart":null,"timeRangeEnd":null,"preferredTimeOfDay":null,"locationContext":"home","onLeave":false,"onArrive":true}
 
 Priority keywords: urgent/critical/asap/important → High/Critical, low priority → Low, else Medium
 Category keywords: medicine/health/doctor/exercise → Health, meeting/work/project → Work, study/learn/exam → Study, buy/shop/grocery → Shopping, family/mom/dad/kids → Family
 Time keywords: morning → Morning (6-12), afternoon → Afternoon (12-17), evening → Evening (17-21), night → Night (21-24), late night → LateNight (0-6)
 Repeat keywords: every X minutes/hours/days/weeks/months, daily/weekly/monthly, weekdays → repeatOnDays [1-5]
+Location keywords: home/house → home, work/office → work, gym/fitness → gym
+Context keywords: leaving/when I leave/before leaving → onLeave=true, arriving/when I arrive/when I get to → onArrive=true
 
 Return ONLY the JSON object, no other text.
 ''';
@@ -129,11 +140,12 @@ Return ONLY the JSON object, no other text.
   /// Format next Monday at specific time
   static String _formatNextMonday(DateTime now, int hour, int minute) {
     int daysUntilMonday = (DateTime.monday - now.weekday) % 7;
-    if (daysUntilMonday == 0)
+    if (daysUntilMonday == 0) {
       daysUntilMonday = 7; // Next week if today is Monday
+    }
     final nextMonday = now.add(Duration(days: daysUntilMonday));
     return DateTime(
-            nextMonday.year, nextMonday.month, nextMonday.day, hour, minute)
+            nextMonday.year, nextMonday.month, nextMonday.day, hour, minute,)
         .toIso8601String();
   }
 
@@ -157,22 +169,22 @@ Return ONLY the JSON object, no other text.
     // Basic category detection
     ReminderCategory? category;
     if (RegExp(r'\b(medicine|health|doctor|exercise|pill|medication)\b',
-            caseSensitive: false)
+            caseSensitive: false,)
         .hasMatch(text)) {
       category = ReminderCategory.health;
     } else if (RegExp(r'\b(meeting|work|project|office|deadline)\b',
-            caseSensitive: false)
+            caseSensitive: false,)
         .hasMatch(text)) {
       category = ReminderCategory.work;
     } else if (RegExp(r'\b(study|learn|exam|homework|class)\b',
-            caseSensitive: false)
+            caseSensitive: false,)
         .hasMatch(text)) {
       category = ReminderCategory.study;
     } else if (RegExp(r'\b(buy|shop|grocery|purchase)\b', caseSensitive: false)
         .hasMatch(text)) {
       category = ReminderCategory.shopping;
     } else if (RegExp(r'\b(family|mom|dad|kids|parents)\b',
-            caseSensitive: false)
+            caseSensitive: false,)
         .hasMatch(text)) {
       category = ReminderCategory.family;
     }
@@ -183,7 +195,7 @@ Return ONLY the JSON object, no other text.
     String? repeatUnit;
 
     final recurringMatch = RegExp(r'every (\d+) (minute|hour|day|week|month)s?',
-            caseSensitive: false)
+            caseSensitive: false,)
         .firstMatch(text);
     if (recurringMatch != null) {
       isRecurring = true;
@@ -198,12 +210,12 @@ Return ONLY the JSON object, no other text.
     String title = text
         .replaceAll(
             RegExp(r'^(urgent|critical|high priority|low priority):\s*',
-                caseSensitive: false),
-            '')
+                caseSensitive: false,),
+            '',)
         .replaceAll(
             RegExp(r'\bevery \d+ (minute|hour|day|week|month)s?\b',
-                caseSensitive: false),
-            '')
+                caseSensitive: false,),
+            '',)
         .trim();
 
     return ParsedReminderData(
@@ -231,6 +243,9 @@ class ParsedReminderData {
   final String? timeRangeStart; // HH:mm
   final String? timeRangeEnd; // HH:mm
   final TimeOfDay? preferredTimeOfDay;
+  final String? locationContext; // home, work, gym
+  final bool onLeave; // Trigger when leaving location
+  final bool onArrive; // Trigger when arriving at location
 
   ParsedReminderData({
     required this.title,
@@ -245,6 +260,9 @@ class ParsedReminderData {
     this.timeRangeStart,
     this.timeRangeEnd,
     this.preferredTimeOfDay,
+    this.locationContext,
+    this.onLeave = false,
+    this.onArrive = false,
   });
 
   factory ParsedReminderData.fromJson(Map<String, dynamic> json) {
@@ -285,6 +303,9 @@ class ParsedReminderData {
               orElse: () => TimeOfDay.morning,
             )
           : null,
+      locationContext: json['locationContext'] as String?,
+      onLeave: json['onLeave'] as bool? ?? false,
+      onArrive: json['onArrive'] as bool? ?? false,
     );
   }
 
@@ -293,6 +314,7 @@ class ParsedReminderData {
     return 'ParsedReminderData(title: $title, dateTime: $dateTime, priority: $priority, '
         'category: $category, isRecurring: $isRecurring, repeatInterval: $repeatInterval, '
         'repeatUnit: $repeatUnit, repeatEndDate: $repeatEndDate, repeatOnDays: $repeatOnDays, '
-        'timeRange: $timeRangeStart-$timeRangeEnd, preferredTimeOfDay: $preferredTimeOfDay)';
+        'timeRange: $timeRangeStart-$timeRangeEnd, preferredTimeOfDay: $preferredTimeOfDay, '
+        'locationContext: $locationContext, onLeave: $onLeave, onArrive: $onArrive)';
   }
 }

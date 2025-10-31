@@ -5,9 +5,11 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../providers/reminder_provider.dart';
 import '../../core/services/nlu_parser.dart';
 import '../../core/services/gpt_nlu_service.dart';
+import '../../core/services/home_detection_service.dart';
 import '../../data/models/reminder.dart';
 import '../../core/services/permission_service.dart';
 import '../widgets/smart_reminder_dialog.dart';
+import 'home_setup_screen.dart';
 
 /// Add reminder screen with natural language input
 class AddReminderScreen extends StatefulWidget {
@@ -72,6 +74,51 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
       if (gptParsed != null) {
         debugPrint('✅ GPT parsed: $gptParsed');
 
+        // Check if location-based reminder needs home setup
+        if ((gptParsed.onLeave || gptParsed.onArrive) &&
+            gptParsed.locationContext == 'home') {
+          final homeService = HomeDetectionService();
+          final status = await homeService.getSetupStatus();
+
+          if (!(status['isFullySetup'] as bool)) {
+            // Prompt user to setup home
+            final shouldSetup = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('🏠 Home Setup Required'),
+                content: const Text(
+                  'This reminder needs to know your home location. Would you like to set it up now?\n\n'
+                  'Quick setup takes just 2 steps:\n'
+                  '✓ Add your home WiFi\n'
+                  '✓ Set your GPS location',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Skip'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Setup Now'),
+                  ),
+                ],
+              ),
+            );
+
+            if (shouldSetup == true && mounted) {
+              setState(() => _isCreating = false);
+              // Navigate to home setup
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const HomeSetupScreen(),
+                ),
+              );
+              return;
+            }
+          }
+        }
+
         // Convert time range strings to DateTime
         DateTime? timeRangeStart;
         DateTime? timeRangeEnd;
@@ -79,15 +126,47 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
         if (gptParsed.timeRangeStart != null) {
           final parts = gptParsed.timeRangeStart!.split(':');
           final now = DateTime.now();
-          timeRangeStart = DateTime(now.year, now.month, now.day,
-              int.parse(parts[0]), int.parse(parts[1]));
+          timeRangeStart = DateTime(
+            now.year,
+            now.month,
+            now.day,
+            int.parse(parts[0]),
+            int.parse(parts[1]),
+          );
         }
 
         if (gptParsed.timeRangeEnd != null) {
           final parts = gptParsed.timeRangeEnd!.split(':');
           final now = DateTime.now();
-          timeRangeEnd = DateTime(now.year, now.month, now.day,
-              int.parse(parts[0]), int.parse(parts[1]));
+          timeRangeEnd = DateTime(
+            now.year,
+            now.month,
+            now.day,
+            int.parse(parts[0]),
+            int.parse(parts[1]),
+          );
+        }
+
+        // Prepare optional location suggestion (don't auto-enable)
+        Map<String, dynamic>? locationSuggestion;
+        if (gptParsed.locationContext == 'home' &&
+            (gptParsed.onLeave || gptParsed.onArrive)) {
+          final homeService = HomeDetectionService();
+          final homeLocation = await homeService.getHomeLocation();
+
+          if (homeLocation != null) {
+            locationSuggestion = {
+              'context': 'home',
+              'latitude': homeLocation.latitude,
+              'longitude': homeLocation.longitude,
+              'radius': homeLocation.radius,
+            };
+
+            debugPrint(
+                '✅ Home location available (suggestion): $locationSuggestion');
+          } else {
+            debugPrint('⚠️ Home location not configured (no suggestion)');
+          }
         }
 
         // Convert parsed data to Reminder object
@@ -103,12 +182,18 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
           timeRangeStart: timeRangeStart,
           timeRangeEnd: timeRangeEnd,
           preferredTimeOfDay: gptParsed.preferredTimeOfDay,
+          // Do not auto-set geofence here. Let user enable it in dialog.
+          onLeaveContext: gptParsed.onLeave,
+          onArriveContext: gptParsed.onArrive,
         );
 
-        // Show smart dialog for confirmation/editing
+        // Show smart dialog for confirmation/editing and pass location suggestion if available
         final result = await showDialog<Reminder>(
           context: context,
-          builder: (context) => SmartReminderDialog(reminder: reminder),
+          builder: (context) => SmartReminderDialog(
+            reminder: reminder,
+            locationSuggestion: locationSuggestion,
+          ),
         );
 
         if (result == null) {
@@ -270,11 +355,13 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
                       );
                       if (available) {
                         setState(() => _isListening = true);
-                        _speech.listen(onResult: (result) {
-                          setState(() {
-                            _textController.text = result.recognizedWords;
-                          });
-                        });
+                        _speech.listen(
+                          onResult: (result) {
+                            setState(() {
+                              _textController.text = result.recognizedWords;
+                            });
+                          },
+                        );
                       }
                     } else {
                       setState(() => _isListening = false);

@@ -146,7 +146,7 @@ class _RecentNotificationsScreenState extends State<RecentNotificationsScreen> {
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(),
                   child: const Text('Close'),
-                )
+                ),
               ],
             ),
           );
@@ -164,7 +164,7 @@ class _RecentNotificationsScreenState extends State<RecentNotificationsScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadEvents,
-          )
+          ),
         ],
       ),
       body: RefreshIndicator(
@@ -175,7 +175,7 @@ class _RecentNotificationsScreenState extends State<RecentNotificationsScreen> {
                 ? ListView(
                     children: const [
                       SizedBox(height: 200),
-                      Center(child: Text('No recent notifications'))
+                      Center(child: Text('No recent notifications')),
                     ],
                   )
                 : ListView.builder(

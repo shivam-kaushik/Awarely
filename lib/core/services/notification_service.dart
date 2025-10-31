@@ -83,7 +83,7 @@ class NotificationService {
   /// Handle notification tap when app is in background/terminated
   @pragma('vm:entry-point')
   static void _onBackgroundNotificationTapped(
-      NotificationResponse response) async {
+      NotificationResponse response,) async {
     final payload = response.payload;
     debugPrint('Notification tapped (background): $payload');
 
@@ -94,7 +94,7 @@ class NotificationService {
 
   /// Record notification interaction in database
   static Future<void> _recordNotificationInteraction(
-      String reminderId, String outcome) async {
+      String reminderId, String outcome,) async {
     try {
       final dbHelper = DatabaseHelper.instance;
       final db = await dbHelper.database;
@@ -116,7 +116,7 @@ class NotificationService {
       );
 
       debugPrint(
-          '✅ Recorded notification interaction for reminder $reminderId');
+          '✅ Recorded notification interaction for reminder $reminderId',);
     } catch (e) {
       debugPrint('❌ Failed to record notification interaction: $e');
     }
@@ -124,7 +124,7 @@ class NotificationService {
 
   /// Record scheduled notification in database
   static Future<void> _recordScheduledNotification(
-      String reminderId, DateTime scheduledTime) async {
+      String reminderId, DateTime scheduledTime,) async {
     try {
       final dbHelper = DatabaseHelper.instance;
       final db = await dbHelper.database;
@@ -145,7 +145,7 @@ class NotificationService {
       );
 
       debugPrint(
-          '✅ Recorded scheduled notification for reminder $reminderId at $scheduledTime');
+          '✅ Recorded scheduled notification for reminder $reminderId at $scheduledTime',);
     } catch (e) {
       debugPrint('❌ Failed to record scheduled notification: $e');
     }
@@ -206,7 +206,7 @@ class NotificationService {
     }
 
     debugPrint(
-        '📅 Scheduling notification id=$id title="$title" at $scheduledTime payload=$payload');
+        '📅 Scheduling notification id=$id title="$title" at $scheduledTime payload=$payload',);
 
     const androidDetails = AndroidNotificationDetails(
       AppConstants.notificationChannelId,
@@ -240,7 +240,7 @@ class NotificationService {
     debugPrint('🔔 TZ Scheduled time: $tzScheduledTime');
     debugPrint('🕐 Current time: ${tz.TZDateTime.now(tz.local)}');
     debugPrint(
-        '⏰ Time until notification: ${tzScheduledTime.difference(tz.TZDateTime.now(tz.local))}');
+        '⏰ Time until notification: ${tzScheduledTime.difference(tz.TZDateTime.now(tz.local))}',);
 
     await _notifications.zonedSchedule(
       id,
@@ -265,7 +265,7 @@ class NotificationService {
     // Create context event for scheduled notification
     if (scheduled && payload != null) {
       await NotificationService._recordScheduledNotification(
-          payload, scheduledTime);
+          payload, scheduledTime,);
     }
   }
 

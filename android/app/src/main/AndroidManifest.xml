@@ -14,11 +14,17 @@
 
     <!-- Microphone for speech input -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    
     <!-- Location permissions for geofence / context detection -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <!-- Background location (required separately on Android 10+ to run when app is backgrounded) -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    
+    <!-- WiFi state permissions for home detection -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    
     <!-- Foreground service (safe to declare for background work that needs to run in foreground) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 

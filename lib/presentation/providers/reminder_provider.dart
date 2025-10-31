@@ -79,7 +79,7 @@ class ReminderProvider with ChangeNotifier {
             payload: reminder.id,
           );
           debugPrint(
-              'Scheduled alarm for reminder ${reminder.id} at ${reminder.timeAt} (id=${reminder.id.hashCode})');
+              'Scheduled alarm for reminder ${reminder.id} at ${reminder.timeAt} (id=${reminder.id.hashCode})',);
         }
       }
 
@@ -193,7 +193,7 @@ class ReminderProvider with ChangeNotifier {
         );
 
         debugPrint(
-            '  📅 Scheduled occurrence ${count + 1}: $nextOccurrence (id: $notificationId)');
+            '  📅 Scheduled occurrence ${count + 1}: $nextOccurrence (id: $notificationId)',);
         count++;
       }
 
@@ -253,7 +253,7 @@ class ReminderProvider with ChangeNotifier {
 
       // Debug: Log reminder details
       debugPrint(
-          '🔄 Toggling reminder $id to ${enabled ? "enabled" : "disabled"}');
+          '🔄 Toggling reminder $id to ${enabled ? "enabled" : "disabled"}',);
       debugPrint('   Text: ${reminder.text}');
       debugPrint('   IsRecurring: ${reminder.isRecurring}');
       debugPrint('   RepeatInterval: ${reminder.repeatInterval}');

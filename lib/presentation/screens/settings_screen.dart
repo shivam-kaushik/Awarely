@@ -88,7 +88,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           padding: const EdgeInsets.all(16),
           children: [
             const Text('Permissions',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),),
             const SizedBox(height: 12),
             ListTile(
               title: const Text('Notifications'),
@@ -158,7 +158,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
             const SizedBox(height: 24),
             const Text('Notifications diagnostics',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),),
             const SizedBox(height: 12),
             ListTile(
               title: const Text('Test notifications'),
@@ -189,7 +189,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text(
-                            'Test sent! Check notification in 30 seconds.'),
+                            'Test sent! Check notification in 30 seconds.',),
                         duration: Duration(seconds: 3),
                       ),
                     );
@@ -228,7 +228,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     child: ListTile(
                       title: Text(s),
                     ),
-                  )),
+                  ),),
             ],
             const SizedBox(height: 24),
             ElevatedButton.icon(

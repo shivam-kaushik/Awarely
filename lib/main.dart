@@ -90,7 +90,7 @@ void main() async {
   debugPrint('📱 Exact alarm permission: $hasExactAlarm');
   if (!hasExactAlarm) {
     debugPrint(
-        '⚠️ Exact alarm permission not granted. Notifications may not be reliable.');
+        '⚠️ Exact alarm permission not granted. Notifications may not be reliable.',);
   }
 
   // Set preferred orientations
@@ -103,8 +103,42 @@ void main() async {
 }
 
 /// Main application widget
-class AwarelyApp extends StatelessWidget {
+class AwarelyApp extends StatefulWidget {
   const AwarelyApp({super.key});
+
+  @override
+  State<AwarelyApp> createState() => _AwarelyAppState();
+}
+
+class _AwarelyAppState extends State<AwarelyApp> {
+  TriggerEngine? _triggerEngine;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeTriggerEngine();
+  }
+
+  Future<void> _initializeTriggerEngine() async {
+    final reminderRepository = ReminderRepository();
+    final notificationService = NotificationService();
+    await notificationService.initialize();
+
+    _triggerEngine = TriggerEngine(
+      reminderRepository: reminderRepository,
+      notificationService: notificationService,
+    );
+
+    // Start monitoring location and WiFi changes
+    await _triggerEngine!.startMonitoring();
+    debugPrint('🎯 TriggerEngine started in main app');
+  }
+
+  @override
+  void dispose() {
+    _triggerEngine?.stopMonitoring();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

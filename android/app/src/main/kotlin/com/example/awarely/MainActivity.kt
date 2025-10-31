@@ -15,6 +15,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.example.awarely/permissions"
     private val ALARM_CHANNEL = "com.example.awarely/alarms"
+    private val WIFI_CHANNEL = "com.example.awarely/wifi"
     private lateinit var alarmScheduler: AlarmScheduler
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
@@ -69,6 +70,44 @@ class MainActivity: FlutterActivity() {
                 }
                 else -> result.notImplemented()
             }
+        }
+        
+        // WiFi channel for getting current SSID
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, WIFI_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getCurrentWifiSsid" -> {
+                    val ssid = getCurrentWifiSsid()
+                    result.success(ssid)
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun getCurrentWifiSsid(): String? {
+        return try {
+            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+            val wifiInfo = wifiManager.connectionInfo
+            
+            if (wifiInfo != null && wifiInfo.ssid != null) {
+                // Remove quotes from SSID (Android adds them)
+                var ssid = wifiInfo.ssid
+                if (ssid.startsWith("\"") && ssid.endsWith("\"")) {
+                    ssid = ssid.substring(1, ssid.length - 1)
+                }
+                
+                // Check for "unknown ssid" (returned when location is off or no permission)
+                if (ssid == "<unknown ssid>" || ssid.isEmpty()) {
+                    null
+                } else {
+                    ssid
+                }
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Error getting WiFi SSID: ${e.message}")
+            null
         }
     }
 

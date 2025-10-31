@@ -2,28 +2,27 @@ import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../data/models/reminder.dart';
 import '../../data/models/context_event.dart';
 import '../../data/repositories/reminder_repository.dart';
 import '../../core/constants/app_constants.dart';
 import 'notification_service.dart';
+import 'home_detection_service.dart';
 
 /// Context trigger engine that monitors sensors and triggers reminders
-///
-/// Note: SSID detection is implemented as a connectivity-based fallback
-/// (`_currentWifiSsid == 'connected'`) to avoid adding a dependency that
-/// may not resolve in all environments. For precise SSID matching, add
-/// `wifi_info_plus` and replace getCurrentWifiSsid() with real SSID lookup.
+/// Integrated with HomeDetectionService for WiFi + GPS home detection
 class TriggerEngine {
   final ReminderRepository _reminderRepository;
   final NotificationService _notificationService;
+  final HomeDetectionService _homeService = HomeDetectionService();
 
   StreamSubscription<Position>? _positionSubscription;
   StreamSubscription<ConnectivityResult>? _connectivitySubscription;
 
-  String? _currentWifiSsid;
   Position? _currentPosition;
+  bool _wasAtHome = false;
 
   TriggerEngine({
     required ReminderRepository reminderRepository,
@@ -61,39 +60,55 @@ class TriggerEngine {
   }
 
   Future<void> _startWifiMonitoring() async {
+    // Check initial home status
+    _wasAtHome = await _homeService.isAtHome();
+
+    if (kDebugMode) {
+      print(
+          '📡 TriggerEngine: WiFi monitoring started (initial home status: $_wasAtHome)',);
+    }
+
     _connectivitySubscription = Connectivity()
         .onConnectivityChanged
         .listen((ConnectivityResult r) async {
-      if (r == ConnectivityResult.wifi) {
-        // Fallback: mark as connected. If you later add wifi_info_plus,
-        // replace this with actual SSID detection.
-        _currentWifiSsid = 'connected';
-        await checkWifiReminders();
-      } else {
-        final previous = _currentWifiSsid;
-        _currentWifiSsid = null;
-        if (previous != null) {
-          await checkWifiReminders(leaving: true);
-        }
+      if (kDebugMode) {
+        print('📡 Connectivity changed: $r');
       }
+
+      // Check if we're at home when connectivity changes
+      final isAtHome = await _homeService.isAtHome();
+
+      if (kDebugMode) {
+        print('🏠 Home status check: was=$_wasAtHome, now=$isAtHome');
+      }
+
+      // Detect transitions
+      if (isAtHome && !_wasAtHome) {
+        // Just arrived home
+        if (kDebugMode) {
+          print('✅ ARRIVING HOME detected');
+        }
+        await checkLocationReminders(arriving: true);
+      } else if (!isAtHome && _wasAtHome) {
+        // Just left home
+        if (kDebugMode) {
+          print('🚪 LEAVING HOME detected');
+        }
+        await checkLocationReminders(leaving: true);
+      }
+
+      _wasAtHome = isAtHome;
     });
   }
 
-  /// Return the current (fallback) wifi SSID value. May be 'connected' or null.
-  Future<String?> getCurrentWifiSsid() async => _currentWifiSsid;
+  /// Get current WiFi SSID from home service
+  Future<String?> getCurrentWifiSsid() async {
+    return await _homeService.getCurrentWifiSsid();
+  }
 
-  /// Heuristic to determine if user is on "home" wifi. This uses the
-  /// connectivity fallback: if connected and any reminder has wifiSsid == 'connected',
-  /// we consider that "home". Replace with real SSID matching when available.
+  /// Check if user is on home WiFi
   Future<bool> isOnHomeWifi() async {
-    final ssid = await getCurrentWifiSsid();
-    if (ssid == null) return false;
-
-    final reminders = await _reminderRepository.getAllReminders();
-    for (var r in reminders) {
-      if (r.wifiSsid != null && r.wifiSsid == 'connected') return true;
-    }
-    return false;
+    return await _homeService.isAtHomeViaWifi();
   }
 
   Future<bool> _checkLocationPermission() async {
@@ -113,8 +128,9 @@ class TriggerEngine {
     final reminders = await _reminderRepository.getActiveReminders();
 
     for (var reminder in reminders) {
-      if (reminder.geofenceLat == null || reminder.geofenceLng == null)
+      if (reminder.geofenceLat == null || reminder.geofenceLng == null) {
         continue;
+      }
 
       final distance = Geolocator.distanceBetween(
         _currentPosition!.latitude,
@@ -138,26 +154,50 @@ class TriggerEngine {
     }
   }
 
-  /// Check Wi-Fi based reminders
-  Future<void> checkWifiReminders({bool leaving = false}) async {
+  /// Check location-based reminders (WiFi + GPS)
+  Future<void> checkLocationReminders(
+      {bool leaving = false, bool arriving = false,}) async {
     final reminders = await _reminderRepository.getActiveReminders();
-    final isConnected = _currentWifiSsid != null;
+    final isAtHome = await _homeService.isAtHome();
+
+    if (kDebugMode) {
+      print(
+          '🔍 Checking location reminders: leaving=$leaving, arriving=$arriving, at home=$isAtHome',);
+    }
 
     for (var reminder in reminders) {
-      if (reminder.wifiSsid == null) continue;
+      // Check if this is a home-based reminder
+      final isHomeReminder = reminder.geofenceId == 'home';
 
-      // If reminder expects 'connected', treat any Wi‑Fi connection as match.
-      final ssidMatches = (reminder.wifiSsid == 'connected' && isConnected) ||
-          (reminder.wifiSsid != null &&
-              _currentWifiSsid != null &&
-              reminder.wifiSsid == _currentWifiSsid);
+      if (!isHomeReminder) continue;
 
-      if (leaving && reminder.onLeaveContext) {
+      if (kDebugMode) {
+        print(
+            '  📝 Home reminder: "${reminder.text}" (leave=${reminder.onLeaveContext}, arrive=${reminder.onArriveContext})',);
+      }
+
+      // Handle leaving home
+      if (leaving && reminder.onLeaveContext && !isAtHome) {
+        if (kDebugMode) {
+          print('  🔔 TRIGGERING "leaving home" reminder: ${reminder.text}');
+        }
         await _triggerReminder(reminder, AppConstants.contextTypeLeaving);
-      } else if (isConnected && reminder.onArriveContext && ssidMatches) {
+      }
+
+      // Handle arriving home
+      if (arriving && reminder.onArriveContext && isAtHome) {
+        if (kDebugMode) {
+          print('  🔔 TRIGGERING "arriving home" reminder: ${reminder.text}');
+        }
         await _triggerReminder(reminder, AppConstants.contextTypeArriving);
       }
     }
+  }
+
+  /// Check Wi-Fi based reminders (legacy - redirects to checkLocationReminders)
+  @Deprecated('Use checkLocationReminders instead')
+  Future<void> checkWifiReminders({bool leaving = false}) async {
+    await checkLocationReminders(leaving: leaving, arriving: !leaving);
   }
 
   /// Check time-based reminders (called periodically)
@@ -175,10 +215,28 @@ class TriggerEngine {
     }
   }
 
-  /// Run periodic checks (time + wifi)
+  /// Run periodic checks (time + location)
   Future<void> runBackgroundChecks() async {
+    if (kDebugMode) {
+      print('⏰ Running background checks...');
+    }
+
     await checkTimeReminders();
-    await checkWifiReminders();
+
+    // Check if home status changed
+    final isAtHome = await _homeService.isAtHome();
+    if (isAtHome != _wasAtHome) {
+      if (kDebugMode) {
+        print(
+            '🏠 Background check detected home status change: was=$_wasAtHome, now=$isAtHome',);
+      }
+      if (isAtHome) {
+        await checkLocationReminders(arriving: true);
+      } else {
+        await checkLocationReminders(leaving: true);
+      }
+      _wasAtHome = isAtHome;
+    }
   }
 
   Future<void> _triggerReminder(Reminder reminder, String contextType) async {

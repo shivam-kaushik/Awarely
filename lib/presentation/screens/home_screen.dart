@@ -3,9 +3,11 @@ import 'package:provider/provider.dart';
 
 import '../providers/reminder_provider.dart';
 import '../widgets/reminder_card.dart';
+import '../widgets/smart_reminder_dialog.dart';
 import 'add_reminder_screen.dart';
 import 'analytics_screen.dart';
 import 'settings_screen.dart';
+import '../../data/models/reminder.dart';
 
 /// Home screen - main dashboard
 class HomeScreen extends StatefulWidget {
@@ -130,8 +132,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 final reminder = reminderProvider.reminders[index];
                 return ReminderCard(
                   reminder: reminder,
-                  onTap: () {
-                    // Navigate to detail/edit
+                  onTap: () async {
+                    // Edit reminder by showing SmartReminderDialog
+                    final result = await showDialog<Reminder>(
+                      context: context,
+                      builder: (context) => SmartReminderDialog(
+                        reminder: reminder,
+                      ),
+                    );
+                    if (result != null) {
+                      reminderProvider.updateReminder(result);
+                    }
                   },
                   onToggle: (enabled) {
                     reminderProvider.toggleReminder(reminder.id, enabled);

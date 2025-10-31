@@ -58,6 +58,12 @@ class ReminderCard extends StatelessWidget {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined),
+                        onPressed: onTap,
+                        tooltip: 'Edit reminder',
+                        iconSize: 20,
+                      ),
                       Switch(
                         value: reminder.enabled,
                         onChanged: onToggle,
@@ -80,11 +86,11 @@ class ReminderCard extends StatelessWidget {
               Text(
                 reminder.text,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  decoration: reminder.enabled
-                      ? TextDecoration.none
-                      : TextDecoration.lineThrough,
-                ),
+                      fontWeight: FontWeight.w600,
+                      decoration: reminder.enabled
+                          ? TextDecoration.none
+                          : TextDecoration.lineThrough,
+                    ),
               ),
 
               const SizedBox(height: 8),
