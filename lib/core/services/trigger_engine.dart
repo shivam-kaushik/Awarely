@@ -8,8 +8,10 @@ import '../../data/models/reminder.dart';
 import '../../data/models/context_event.dart';
 import '../../data/repositories/reminder_repository.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/utils/date_time_utils.dart';
 import 'notification_service.dart';
 import 'home_detection_service.dart';
+import 'activity_recognition_service.dart';
 
 /// Context trigger engine that monitors sensors and triggers reminders
 /// Integrated with HomeDetectionService for WiFi + GPS home detection
@@ -17,12 +19,14 @@ class TriggerEngine {
   final ReminderRepository _reminderRepository;
   final NotificationService _notificationService;
   final HomeDetectionService _homeService = HomeDetectionService();
+  final ActivityRecognitionService _activityService = ActivityRecognitionService();
 
   StreamSubscription<Position>? _positionSubscription;
   StreamSubscription<ConnectivityResult>? _connectivitySubscription;
 
   Position? _currentPosition;
   bool _wasAtHome = false;
+  String? _previousActivity;
 
   TriggerEngine({
     required ReminderRepository reminderRepository,
@@ -30,21 +34,36 @@ class TriggerEngine {
   })  : _reminderRepository = reminderRepository,
         _notificationService = notificationService;
 
-  /// Start monitoring context (location + wifi)
+  /// Start monitoring context (location + wifi + activity)
   Future<void> startMonitoring() async {
     await _startLocationMonitoring();
     await _startWifiMonitoring();
+    await _startActivityMonitoring();
   }
 
   /// Stop monitoring context
   Future<void> stopMonitoring() async {
     await _positionSubscription?.cancel();
     await _connectivitySubscription?.cancel();
+    await _activityService.stopMonitoring();
   }
 
   Future<void> _startLocationMonitoring() async {
+    if (kDebugMode) {
+      print('📍 TriggerEngine: Starting location monitoring...');
+    }
+    
     final hasPermission = await _checkLocationPermission();
-    if (!hasPermission) return;
+    if (!hasPermission) {
+      if (kDebugMode) {
+        print('⚠️ TriggerEngine: Location permission not granted. Location monitoring disabled.');
+      }
+      return;
+    }
+
+    if (kDebugMode) {
+      print('✅ TriggerEngine: Location permission granted');
+    }
 
     const locationSettings = LocationSettings(
       accuracy: LocationAccuracy.medium,
@@ -54,9 +73,20 @@ class TriggerEngine {
     _positionSubscription = Geolocator.getPositionStream(
       locationSettings: locationSettings,
     ).listen((Position position) {
+      if (kDebugMode) {
+        print('📍 Position update: lat=${position.latitude.toStringAsFixed(6)}, lng=${position.longitude.toStringAsFixed(6)}, accuracy=${position.accuracy.toStringAsFixed(1)}m');
+      }
       _currentPosition = position;
       _checkGeofenceReminders();
+    }, onError: (error) {
+      if (kDebugMode) {
+        print('❌ TriggerEngine: Location stream error: $error');
+      }
     });
+
+    if (kDebugMode) {
+      print('✅ TriggerEngine: Location monitoring started (distance filter: 50m)');
+    }
   }
 
   Future<void> _startWifiMonitoring() async {
@@ -99,6 +129,112 @@ class TriggerEngine {
 
       _wasAtHome = isAtHome;
     });
+  }
+
+  /// Start monitoring device activity
+  Future<void> _startActivityMonitoring() async {
+    if (kDebugMode) {
+      print('🏃 TriggerEngine: Starting activity monitoring...');
+    }
+    
+    await _activityService.startMonitoring(
+      onActivityChanged: (activity) {
+        if (kDebugMode) {
+          print('🏃 TriggerEngine: Activity changed callback received');
+        }
+        _checkActivityReminders();
+      },
+    );
+    
+    // Initial check
+    _previousActivity = _activityService.getActivityName(_activityService.currentActivity);
+    if (kDebugMode) {
+      print('🏃 TriggerEngine: Initial activity: $_previousActivity');
+    }
+    _checkActivityReminders();
+    
+    if (kDebugMode) {
+      print('✅ TriggerEngine: Activity monitoring started');
+    }
+  }
+
+  /// Check activity-based reminders
+  Future<void> _checkActivityReminders() async {
+    final currentActivityName = _activityService.getActivityName(_activityService.currentActivity);
+    
+    if (kDebugMode) {
+      print('🏃 TriggerEngine: Checking activity reminders (current: $currentActivityName, previous: $_previousActivity)');
+    }
+    
+    if (currentActivityName == _previousActivity) {
+      if (kDebugMode) {
+        print('🏃 TriggerEngine: Activity unchanged, skipping check');
+      }
+      return; // No change
+    }
+    
+    if (kDebugMode) {
+      print('🔄 TriggerEngine: Activity changed: $_previousActivity -> $currentActivityName');
+    }
+    
+    final reminders = await _reminderRepository.getActiveReminders();
+    if (kDebugMode) {
+      print('🏃 TriggerEngine: Checking ${reminders.length} active reminders for activity triggers');
+    }
+    
+    int checkedCount = 0;
+    int matchedCount = 0;
+    
+    for (var reminder in reminders) {
+      if (reminder.activityType == null) continue;
+      checkedCount++;
+      
+      // Normalize activity names for comparison
+      final reminderActivity = reminder.activityType!.toLowerCase();
+      final currentActivityLower = currentActivityName.toLowerCase();
+      
+      // Map activity names (handle variations)
+      final activityMap = {
+        'still': 'stationary',
+        'stationary': 'still',
+        'walking': 'walking',
+        'running': 'running',
+        'onbicycle': 'cycling',
+        'cycling': 'onbicycle',
+        'invehicle': 'driving',
+        'driving': 'invehicle',
+        'onfoot': 'walking',
+      };
+      
+      final normalizedReminder = activityMap[reminderActivity] ?? reminderActivity;
+      final normalizedCurrent = activityMap[currentActivityLower] ?? currentActivityLower;
+      
+      // Check if current activity matches reminder's trigger activity
+      if (normalizedReminder == normalizedCurrent || 
+          reminderActivity == currentActivityLower ||
+          currentActivityLower.contains(reminderActivity) ||
+          reminderActivity.contains(currentActivityLower)) {
+        matchedCount++;
+        if (kDebugMode) {
+          print('✅ TriggerEngine: Activity match found!');
+          print('   Reminder: "${reminder.text}"');
+          print('   Reminder activity: ${reminder.activityType}');
+          print('   Current activity: $currentActivityName');
+          print('   Normalized match: $normalizedReminder == $normalizedCurrent');
+        }
+        await _triggerReminder(reminder, 'activity');
+      }
+    }
+    
+    if (kDebugMode) {
+      print('🏃 TriggerEngine: Activity check complete');
+      print('   Checked reminders: $checkedCount');
+      print('   Matched reminders: $matchedCount');
+      print('   Previous activity: $_previousActivity');
+      print('   New activity: $currentActivityName');
+    }
+    
+    _previousActivity = currentActivityName;
   }
 
   /// Get current WiFi SSID from home service
@@ -215,13 +351,16 @@ class TriggerEngine {
     }
   }
 
-  /// Run periodic checks (time + location)
+  /// Run periodic checks (time + location + activity)
   Future<void> runBackgroundChecks() async {
     if (kDebugMode) {
       print('⏰ Running background checks...');
     }
 
     await checkTimeReminders();
+    
+    // Check activity-based reminders
+    await _checkActivityReminders();
 
     // Check if home status changed
     final isAtHome = await _homeService.isAtHome();
@@ -240,21 +379,113 @@ class TriggerEngine {
   }
 
   Future<void> _triggerReminder(Reminder reminder, String contextType) async {
+    if (kDebugMode) {
+      print('');
+      print('🔔═══════════════════════════════════════════════════');
+      print('🔔 TRIGGER ENGINE: Triggering Reminder');
+      print('🔔═══════════════════════════════════════════════════');
+      print('   Reminder ID: ${reminder.id}');
+      print('   Text: "${reminder.text}"');
+      print('   Context Type: $contextType');
+      print('   Time: ${DateTime.now()}');
+    }
+    
     await _reminderRepository.updateTriggerStats(reminder.id);
+    if (kDebugMode) {
+      print('✅ Trigger stats updated');
+    }
+
+    // Store activity context in metadata if available
+    final currentActivity = _activityService.currentActivity;
+    final activityName = currentActivity != null 
+        ? _activityService.getActivityName(currentActivity).toLowerCase()
+        : null;
+
+    if (kDebugMode && activityName != null) {
+      print('🏃 Activity context: $activityName');
+    }
 
     final event = ContextEvent(
       reminderId: reminder.id,
       contextType: contextType,
       outcome: AppConstants.outcomeMissed,
+      metadata: activityName != null 
+          ? {'activity_type': activityName}
+          : null,
     );
     await _reminderRepository.createContextEvent(event);
+    if (kDebugMode) {
+      print('✅ Context event created');
+    }
 
+    // Show notification
+    if (kDebugMode) {
+      print('📱 Showing notification...');
+    }
     await _notificationService.showNotification(
       id: reminder.id.hashCode,
       title: 'Reminder',
       body: reminder.text,
       payload: reminder.id,
     );
+    if (kDebugMode) {
+      print('✅ Notification shown');
+      print('🔔═══════════════════════════════════════════════════');
+      print('');
+    }
+
+    // If recurring reminder, calculate and schedule next occurrence
+    if (reminder.isRecurring && reminder.repeatInterval != null && reminder.repeatUnit != null) {
+      final now = DateTime.now();
+      final nextTime = DateTimeUtils.calculateNextOccurrence(
+        now,
+        reminder.repeatInterval!,
+        reminder.repeatUnit!,
+        repeatOnDays: reminder.repeatOnDays,
+        timeAt: reminder.timeAt,
+      );
+
+      if (nextTime != null && (reminder.repeatEndDate == null || nextTime.isBefore(reminder.repeatEndDate!))) {
+        // Update reminder with next occurrence time
+        final updatedReminder = reminder.copyWith(timeAt: nextTime);
+        await _reminderRepository.updateReminder(updatedReminder);
+
+        // Schedule notification for next occurrence
+        await _notificationService.scheduleNotification(
+          id: reminder.id.hashCode,
+          title: 'Reminder',
+          body: reminder.text,
+          scheduledTime: nextTime,
+          payload: reminder.id,
+        );
+
+        if (kDebugMode) {
+          print('✅ Rescheduled recurring reminder "${reminder.text}" for ${nextTime}');
+        }
+      } else if (reminder.repeatEndDate != null && nextTime != null && nextTime.isAfter(reminder.repeatEndDate!)) {
+        // Recurrence ended, disable reminder
+        await _reminderRepository.toggleReminder(reminder.id, false);
+        if (kDebugMode) {
+          print('⏸️ Recurring reminder "${reminder.text}" ended (past end date)');
+        }
+      }
+    }
+
+    // If constant reminder, schedule next notification in 5 minutes
+    if (reminder.keepRemindingUntilCompleted) {
+      final constantNow = DateTime.now();
+      final nextTime = constantNow.add(const Duration(minutes: 5));
+      await _notificationService.scheduleNotification(
+        id: reminder.id.hashCode,
+        title: 'Reminder',
+        body: reminder.text,
+        scheduledTime: nextTime,
+        payload: reminder.id,
+      );
+      if (kDebugMode) {
+        print('🔄 Scheduled constant reminder "${reminder.text}" for 5 minutes later');
+      }
+    }
   }
 
   /// Manual trigger for testing

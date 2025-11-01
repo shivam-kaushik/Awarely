@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -144,20 +145,32 @@ class HomeDetectionService {
   }
 
   /// Get current WiFi SSID
+  /// Note: iOS 13+ restricts WiFi SSID access (privacy feature)
+  /// On iOS, this will return null and rely on GPS-based detection
   Future<String?> getCurrentWifiSsid() async {
     try {
       final connectivity = Connectivity();
       final result = await connectivity.checkConnectivity();
 
-      if (result == ConnectivityResult.wifi) {
-        // Get SSID from native code
-        final ssid =
-            await _wifiChannel.invokeMethod<String>('getCurrentWifiSsid');
-        debugPrint('📶 Current WiFi SSID: ${ssid ?? "none"}');
-        return ssid;
+      if (result != ConnectivityResult.wifi) {
+        debugPrint('📶 Not connected to WiFi');
+        return null;
       }
 
-      return null;
+      // Platform-specific handling
+      if (Platform.isIOS) {
+        // iOS 13+ restrictions: Can't read WiFi SSID without special entitlements
+        // Return null and rely on GPS-based home detection instead
+        debugPrint('📶 iOS: WiFi SSID unavailable due to iOS privacy restrictions');
+        debugPrint('📶 iOS: Using GPS-based home detection as fallback');
+        return null; // Or return a placeholder like 'wifi_connected'
+      }
+
+      // Android: Get SSID from native code
+      final ssid =
+          await _wifiChannel.invokeMethod<String>('getCurrentWifiSsid');
+      debugPrint('📶 Current WiFi SSID: ${ssid ?? "none"}');
+      return ssid;
     } catch (e) {
       debugPrint('❌ Error getting WiFi SSID: $e');
       return null;

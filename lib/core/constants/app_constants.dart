@@ -7,7 +7,7 @@ class AppConstants {
 
   // Database
   static const String dbName = 'awarely.db';
-  static const int dbVersion = 3; // Updated for smart reminder features
+  static const int dbVersion = 5; // Updated for Phase 2: activity recognition and smart timing
 
   // Tables
   static const String remindersTable = 'reminders';

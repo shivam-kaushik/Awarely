@@ -24,6 +24,7 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
   bool _isCreating = false;
   late stt.SpeechToText _speech;
   bool _isListening = false;
+  Reminder? _parsedPreview;
 
   @override
   void initState() {
@@ -169,10 +170,29 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
           }
         }
 
+        // Safety check: If recurring reminder with "starting now" but no dateTime, set it
+        DateTime? finalTimeAt = gptParsed.dateTime;
+        if (finalTimeAt == null &&
+            gptParsed.isRecurring &&
+            gptParsed.repeatInterval != null &&
+            gptParsed.repeatUnit != null) {
+          // Check if original text contains "starting now" (GPT might have missed it)
+          final lowerText = text.toLowerCase();
+          final hasStartingNow = RegExp(
+            r'\b(starting\s+now|start\s+now|right\s+away|immediately|from\s+now)\b',
+            caseSensitive: false,
+          ).hasMatch(lowerText);
+          
+          if (hasStartingNow) {
+            finalTimeAt = DateTime.now().add(const Duration(seconds: 10));
+            debugPrint('⚠️ GPT parsed missed "starting now" - setting timeAt to 10 seconds from now');
+          }
+        }
+
         // Convert parsed data to Reminder object
         final reminder = Reminder(
           text: gptParsed.title,
-          timeAt: gptParsed.dateTime,
+          timeAt: finalTimeAt,
           priority: gptParsed.priority ?? ReminderPriority.medium,
           category: gptParsed.category ?? ReminderCategory.other,
           repeatInterval: gptParsed.repeatInterval,
@@ -329,50 +349,228 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
               controller: _textController,
               decoration: InputDecoration(
                 hintText: 'e.g., Take my keys when leaving home at 8 AM',
-                suffixIcon: IconButton(
-                  icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
-                  onPressed: () async {
-                    final permissionService = PermissionService();
-                    final granted =
-                        await permissionService.ensureMicrophonePermission(
-                      context,
-                      rationale:
-                          'Microphone access is required for voice input.',
-                    );
-                    if (!granted) return;
+                suffixIcon: _isListening
+                    ? const Padding(
+                        padding: EdgeInsets.all(12.0),
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.red,
+                            ),
+                          ),
+                        ),
+                      )
+                    : IconButton(
+                        icon: const Icon(Icons.mic),
+                        tooltip: 'Voice input',
+                        onPressed: () async {
+                          final permissionService = PermissionService();
+                          final granted =
+                              await permissionService.ensureMicrophonePermission(
+                            context,
+                            rationale:
+                                'Microphone access is required for voice input.',
+                          );
+                          if (!granted) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                      'Microphone permission is required for voice input.'),
+                                ),
+                              );
+                            }
+                            return;
+                          }
 
-                    if (!_isListening) {
-                      final available = await _speech.initialize(
-                        onStatus: (status) {
-                          if (status == 'done' || status == 'notListening') {
+                          if (!_isListening) {
+                            debugPrint('🎤 Voice Input: Initializing speech recognition...');
+                            final available = await _speech.initialize(
+                              onStatus: (status) {
+                                debugPrint('🎤 Voice Input: Status changed: $status');
+                                if (mounted) {
+                                  if (status == 'done' ||
+                                      status == 'notListening' ||
+                                      status == 'canceled') {
+                                    debugPrint('🎤 Voice Input: Stopped listening');
+                                    setState(() => _isListening = false);
+                                    _speech.stop();
+                                  } else if (status == 'listening') {
+                                    debugPrint('🎤 Voice Input: Now listening...');
+                                    setState(() => _isListening = true);
+                                  }
+                                }
+                              },
+                              onError: (error) {
+                                debugPrint('❌ Voice Input Error: ${error.errorMsg}');
+                                if (mounted) {
+                                  setState(() => _isListening = false);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                          'Speech recognition error: ${error.errorMsg}'),
+                                    ),
+                                  );
+                                }
+                              },
+                            );
+                            
+                            if (available) {
+                              debugPrint('✅ Voice Input: Speech recognition available');
+                              if (mounted) {
+                                setState(() => _isListening = true);
+                              }
+                              debugPrint('🎤 Voice Input: Starting to listen...');
+                              _speech.listen(
+                                onResult: (result) {
+                                  debugPrint('🎤 Voice Input: Result - "${result.recognizedWords}" (final=${result.finalResult})');
+                                  if (mounted) {
+                                    setState(() {
+                                      _textController.text =
+                                          result.recognizedWords;
+                                    });
+                                    // Auto-update preview if valid
+                                    if (result.recognizedWords.trim().isNotEmpty &&
+                                        NLUParser.hasValidIntent(
+                                            result.recognizedWords)) {
+                                      debugPrint('✅ Voice Input: Valid intent detected, updating preview');
+                                      _parsedPreview =
+                                          NLUParser.parseReminderText(
+                                              result.recognizedWords);
+                                    }
+                                  }
+                                },
+                                localeId: 'en_US',
+                                listenMode: stt.ListenMode.confirmation,
+                                cancelOnError: true,
+                                partialResults: true,
+                              );
+                            } else {
+                              debugPrint('❌ Voice Input: Speech recognition not available');
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                        'Speech recognition is not available on this device.'),
+                                  ),
+                                );
+                              }
+                            }
+                          } else {
+                            debugPrint('🎤 Voice Input: Stopping speech recognition...');
                             setState(() => _isListening = false);
-                            _speech.stop();
+                            await _speech.stop();
+                            debugPrint('✅ Voice Input: Stopped listening');
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Stopped listening'),
+                                  duration: Duration(seconds: 1),
+                                ),
+                              );
+                            }
                           }
                         },
-                        onError: (error) {
-                          setState(() => _isListening = false);
-                        },
-                      );
-                      if (available) {
-                        setState(() => _isListening = true);
-                        _speech.listen(
-                          onResult: (result) {
-                            setState(() {
-                              _textController.text = result.recognizedWords;
-                            });
-                          },
-                        );
-                      }
-                    } else {
-                      setState(() => _isListening = false);
-                      await _speech.stop();
-                    }
-                  },
-                ),
+                      ),
               ),
               maxLines: 3,
               textCapitalization: TextCapitalization.sentences,
               autofocus: true,
+              onChanged: (text) {
+                // Show preview as user types
+                if (text.trim().isNotEmpty && NLUParser.hasValidIntent(text)) {
+                  setState(() {
+                    _parsedPreview = NLUParser.parseReminderText(text);
+                  });
+                } else {
+                  setState(() {
+                    _parsedPreview = null;
+                  });
+                }
+              },
+            ),
+
+            const SizedBox(height: 16),
+
+            // Preview of parsed reminder
+            if (_parsedPreview != null) ...[
+              Card(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.preview, size: 20, color: Colors.grey[600]),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Preview',
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey[700],
+                                ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        _parsedPreview!.text,
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                              fontWeight: FontWeight.w500,
+                            ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _parsedPreview!.getContextDescription(),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Colors.grey[600],
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            // Quick action chips
+            Text(
+              'Quick Actions',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildQuickActionChip(
+                  context,
+                  'Every Monday at 9am',
+                  Icons.calendar_today,
+                ),
+                _buildQuickActionChip(
+                  context,
+                  'When I leave home',
+                  Icons.home,
+                ),
+                _buildQuickActionChip(
+                  context,
+                  'Tomorrow at 5pm',
+                  Icons.schedule,
+                ),
+                _buildQuickActionChip(
+                  context,
+                  'Daily at 8am',
+                  Icons.repeat,
+                ),
+              ],
             ),
 
             const SizedBox(height: 16),
@@ -380,9 +578,9 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
             // Help text
             Text(
               'Try to include context like time, place, or actions',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.grey[600],
+                  ),
             ),
 
             const SizedBox(height: 32),
@@ -435,6 +633,21 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildQuickActionChip(BuildContext context, String text, IconData icon) {
+    return ActionChip(
+      avatar: Icon(icon, size: 18),
+      label: Text(text),
+      onPressed: () {
+        setState(() {
+          _textController.text = text;
+          if (NLUParser.hasValidIntent(text)) {
+            _parsedPreview = NLUParser.parseReminderText(text);
+          }
+        });
+      },
     );
   }
 }

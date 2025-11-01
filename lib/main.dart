@@ -11,6 +11,7 @@ import 'core/services/trigger_engine.dart';
 import 'data/database/database_helper.dart';
 import 'data/repositories/reminder_repository.dart';
 import 'presentation/providers/reminder_provider.dart';
+import 'presentation/providers/theme_provider.dart';
 import 'presentation/theme/app_theme.dart';
 import 'presentation/screens/splash_screen.dart';
 
@@ -152,19 +153,26 @@ class _AwarelyAppState extends State<AwarelyApp> {
         Provider<PermissionService>(create: (_) => PermissionService()),
 
         // State Management
+        ChangeNotifierProvider<ThemeProvider>(
+          create: (_) => ThemeProvider(),
+        ),
         ChangeNotifierProvider<ReminderProvider>(
           create: (context) => ReminderProvider(
             reminderRepository: context.read<ReminderRepository>(),
           )..loadReminders(),
         ),
       ],
-      child: MaterialApp(
-        title: 'Awarely',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme,
-        darkTheme: AppTheme.darkTheme,
-        themeMode: ThemeMode.system,
-        home: const SplashScreen(),
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, child) {
+          return MaterialApp(
+            title: 'Awarely',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: themeProvider.themeMode,
+            home: const SplashScreen(),
+          );
+        },
       ),
     );
   }

@@ -27,6 +27,7 @@ class SmartReminderDialog extends StatefulWidget {
 
 class _SmartReminderDialogState extends State<SmartReminderDialog> {
   late TextEditingController _textController;
+  late TextEditingController _repeatIntervalController;
   late model.ReminderPriority _priority;
   late model.ReminderCategory _category;
 
@@ -60,9 +61,14 @@ class _SmartReminderDialogState extends State<SmartReminderDialog> {
     _priority = reminder?.priority ?? model.ReminderPriority.medium;
     _category = reminder?.category ?? model.ReminderCategory.other;
     _timeAt = reminder?.timeAt;
-    _isRecurring = reminder?.isRecurring ?? false;
     _repeatInterval = reminder?.repeatInterval;
     _repeatUnit = reminder?.repeatUnit;
+    // Set _isRecurring based on whether we have repeat interval and unit
+    _isRecurring = (_repeatInterval != null && _repeatUnit != null);
+    // Initialize controller with the parsed repeat interval value
+    _repeatIntervalController = TextEditingController(
+      text: _repeatInterval?.toString() ?? '',
+    );
     _repeatEndDate = reminder?.repeatEndDate;
     _repeatOnDays = reminder?.repeatOnDays;
     _timeRangeStart = reminder?.timeRangeStart;
@@ -89,6 +95,7 @@ class _SmartReminderDialogState extends State<SmartReminderDialog> {
   @override
   void dispose() {
     _textController.dispose();
+    _repeatIntervalController.dispose();
     super.dispose();
   }
 
@@ -395,18 +402,25 @@ class _SmartReminderDialogState extends State<SmartReminderDialog> {
               Expanded(
                 flex: 2,
                 child: TextField(
+                  controller: _repeatIntervalController,
                   decoration: const InputDecoration(
                     labelText: 'Every',
                     border: OutlineInputBorder(),
+                    hintText: '2',
                   ),
                   keyboardType: TextInputType.number,
-                  onChanged: (val) => _repeatInterval = int.tryParse(val),
+                  onChanged: (val) {
+                    setState(() {
+                      _repeatInterval = int.tryParse(val);
+                    });
+                  },
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 flex: 3,
                 child: DropdownButtonFormField<String>(
+                  key: ValueKey(_repeatUnit), // Force rebuild when unit changes
                   initialValue: _repeatUnit ?? 'hours',
                   decoration: const InputDecoration(
                     labelText: 'Unit',
@@ -417,6 +431,7 @@ class _SmartReminderDialogState extends State<SmartReminderDialog> {
                     DropdownMenuItem(value: 'hours', child: Text('Hours')),
                     DropdownMenuItem(value: 'days', child: Text('Days')),
                     DropdownMenuItem(value: 'weeks', child: Text('Weeks')),
+                    DropdownMenuItem(value: 'months', child: Text('Months')),
                   ],
                   onChanged: (val) => setState(() => _repeatUnit = val),
                 ),

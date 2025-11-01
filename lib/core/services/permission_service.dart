@@ -1,13 +1,22 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 /// Permission service for managing app permissions
+/// Handles both Android and iOS platforms
 class PermissionService {
   static const _platform = MethodChannel('com.example.awarely/permissions');
 
   /// Check if exact alarm permission is granted (Android 12+)
+  /// On iOS, always returns true (iOS doesn't have exact alarm permission)
   Future<bool> hasExactAlarmPermission() async {
+    if (Platform.isIOS) {
+      // iOS doesn't have exact alarm permission - notifications work differently
+      debugPrint('📱 iOS: Exact alarm permission not applicable (always allowed)');
+      return true;
+    }
+    
     try {
       final bool result = await _platform.invokeMethod('hasExactAlarmPermission');
       return result;
@@ -17,8 +26,15 @@ class PermissionService {
     }
   }
 
-  /// Check if battery optimization is ignored (Android)
+  /// Check if battery optimization is ignored (Android only)
+  /// On iOS, always returns true (iOS doesn't have battery optimization restrictions)
   Future<bool> isBatteryOptimizationDisabled() async {
+    if (Platform.isIOS) {
+      // iOS handles battery optimization differently - not user-configurable
+      debugPrint('📱 iOS: Battery optimization check not applicable');
+      return true;
+    }
+    
     try {
       final bool result = await _platform.invokeMethod('isBatteryOptimizationDisabled');
       return result;
@@ -28,8 +44,15 @@ class PermissionService {
     }
   }
 
-  /// Request to disable battery optimization
+  /// Request to disable battery optimization (Android only)
+  /// On iOS, no-op (iOS manages this automatically)
   Future<void> requestDisableBatteryOptimization() async {
+    if (Platform.isIOS) {
+      // iOS manages battery optimization automatically
+      debugPrint('📱 iOS: Battery optimization not user-configurable');
+      return;
+    }
+    
     try {
       await _platform.invokeMethod('requestDisableBatteryOptimization');
     } catch (e) {
@@ -37,11 +60,18 @@ class PermissionService {
     }
   }
 
-  /// Ensure exact alarm permission is granted
+  /// Ensure exact alarm permission is granted (Android only)
+  /// On iOS, always returns true (not applicable)
   Future<bool> ensureExactAlarmPermission(
       BuildContext context, {
         String? rationale,
       }) async {
+    if (Platform.isIOS) {
+      // iOS doesn't have exact alarm permission
+      debugPrint('📱 iOS: Exact alarm permission not applicable');
+      return true;
+    }
+    
     final hasPermission = await hasExactAlarmPermission();
 
     if (hasPermission) return true;

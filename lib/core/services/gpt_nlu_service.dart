@@ -189,10 +189,28 @@ Return ONLY the JSON object, no other text.
       category = ReminderCategory.family;
     }
 
+    // Check if user wants to start immediately
+    bool startImmediately = false;
+    final immediatePhrases = [
+      r'\b(starting\s+now|start\s+now)\b',
+      r'\b(right\s+away|rightaway)\b',
+      r'\b(immediately|asap)\b',
+      r'\b(from\s+now|begin\s+now)\b',
+    ];
+    
+    for (var pattern in immediatePhrases) {
+      if (RegExp(pattern, caseSensitive: false).hasMatch(text)) {
+        startImmediately = true;
+        debugPrint('   ✅ Detected "starting now" in fallback parser');
+        break;
+      }
+    }
+
     // Basic recurring detection
     bool isRecurring = false;
     int? repeatInterval;
     String? repeatUnit;
+    DateTime? dateTime;
 
     final recurringMatch = RegExp(r'every (\d+) (minute|hour|day|week|month)s?',
             caseSensitive: false,)
@@ -204,9 +222,15 @@ Return ONLY the JSON object, no other text.
       if (repeatUnit != null && !repeatUnit.endsWith('s')) {
         repeatUnit = '${repeatUnit}s';
       }
+      
+      // If "starting now" is detected and it's recurring, set dateTime to 10 seconds from now
+      if (startImmediately) {
+        dateTime = DateTime.now().add(const Duration(seconds: 10));
+        debugPrint('   ✅ Setting dateTime to 10 seconds from now for recurring reminder');
+      }
     }
 
-    // Clean title (remove priority/category markers)
+    // Clean title (remove priority/category markers and recurrence phrases)
     String title = text
         .replaceAll(
             RegExp(r'^(urgent|critical|high priority|low priority):\s*',
@@ -216,10 +240,15 @@ Return ONLY the JSON object, no other text.
             RegExp(r'\bevery \d+ (minute|hour|day|week|month)s?\b',
                 caseSensitive: false,),
             '',)
+        .replaceAll(
+            RegExp(r'\b(starting\s+now|start\s+now|right\s+away|immediately|from\s+now)\b',
+                caseSensitive: false,),
+            '',)
         .trim();
 
     return ParsedReminderData(
       title: title.isEmpty ? text : title,
+      dateTime: dateTime,
       priority: priority,
       category: category,
       isRecurring: isRecurring,

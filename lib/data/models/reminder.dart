@@ -175,6 +175,11 @@ class Reminder {
   // Smart features
   final bool isPaused; // Temporarily pause recurring reminders
   final int skipCount; // How many times user has skipped
+  final bool keepRemindingUntilCompleted; // Re-notify every 5 minutes until completed
+  
+  // Activity-based triggers (from activity_recognition_service.dart)
+  final String? activityType; // 'still', 'walking', 'running', 'onBicycle', 'inVehicle', 'onFoot'
+  final bool useSmartTiming; // Use adaptive timing based on learned patterns
 
   Reminder({
     String? id,
@@ -202,6 +207,9 @@ class Reminder {
     this.category = ReminderCategory.other,
     this.isPaused = false,
     this.skipCount = 0,
+    this.keepRemindingUntilCompleted = false,
+    this.activityType,
+    this.useSmartTiming = false,
   })  : id = id ?? const Uuid().v4(),
         createdAt = createdAt ?? DateTime.now();
 
@@ -257,6 +265,9 @@ class Reminder {
           : ReminderCategory.other,
       isPaused: (map['isPaused'] as int?) == 1,
       skipCount: map['skipCount'] as int? ?? 0,
+      keepRemindingUntilCompleted: (map['keepRemindingUntilCompleted'] as int?) == 1,
+      activityType: map['activityType'] as String?,
+      useSmartTiming: (map['useSmartTiming'] as int?) == 1,
     );
   }
 
@@ -288,6 +299,9 @@ class Reminder {
       'category': category.name,
       'isPaused': isPaused ? 1 : 0,
       'skipCount': skipCount,
+      'keepRemindingUntilCompleted': keepRemindingUntilCompleted ? 1 : 0,
+      'activityType': activityType,
+      'useSmartTiming': useSmartTiming ? 1 : 0,
     };
   }
 
@@ -409,6 +423,7 @@ class Reminder {
     ReminderCategory? category,
     bool? isPaused,
     int? skipCount,
+    bool? keepRemindingUntilCompleted,
   }) {
     return Reminder(
       id: id,
@@ -436,6 +451,9 @@ class Reminder {
       category: category ?? this.category,
       isPaused: isPaused ?? this.isPaused,
       skipCount: skipCount ?? this.skipCount,
+      keepRemindingUntilCompleted: keepRemindingUntilCompleted ?? this.keepRemindingUntilCompleted,
+      activityType: activityType ?? this.activityType,
+      useSmartTiming: useSmartTiming ?? this.useSmartTiming,
     );
   }
 }

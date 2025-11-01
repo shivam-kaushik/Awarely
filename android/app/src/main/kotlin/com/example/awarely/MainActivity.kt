@@ -48,15 +48,36 @@ class MainActivity: FlutterActivity() {
         
         // Alarm scheduler channel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ALARM_CHANNEL).setMethodCallHandler { call, result ->
+            android.util.Log.d("MainActivity", "═══════════════════════════════════════════════════")
+            android.util.Log.d("MainActivity", "📞 Method channel call received")
+            android.util.Log.d("MainActivity", "   Channel: $ALARM_CHANNEL")
+            android.util.Log.d("MainActivity", "   Method: ${call.method}")
+            android.util.Log.d("MainActivity", "   Arguments: ${call.arguments}")
+            
             when (call.method) {
                 "scheduleExactAlarm" -> {
+                    android.util.Log.d("MainActivity", "   Processing scheduleExactAlarm...")
+                    
                     val id = call.argument<Int>("id") ?: 0
                     val title = call.argument<String>("title") ?: "Reminder"
                     val body = call.argument<String>("body") ?: ""
                     val scheduledTimeMillis = call.argument<Long>("scheduledTimeMillis") ?: 0L
                     val payload = call.argument<String>("payload")
                     
+                    android.util.Log.d("MainActivity", "   Extracted arguments:")
+                    android.util.Log.d("MainActivity", "     - id: $id")
+                    android.util.Log.d("MainActivity", "     - title: \"$title\"")
+                    android.util.Log.d("MainActivity", "     - body: \"$body\"")
+                    android.util.Log.d("MainActivity", "     - scheduledTimeMillis: $scheduledTimeMillis")
+                    android.util.Log.d("MainActivity", "     - payload: $payload")
+                    android.util.Log.d("MainActivity", "   Calling alarmScheduler.scheduleExactAlarm()...")
+                    
                     val success = alarmScheduler.scheduleExactAlarm(id, title, body, scheduledTimeMillis, payload)
+                    
+                    android.util.Log.d("MainActivity", "   Result from alarmScheduler: $success")
+                    android.util.Log.d("MainActivity", "   Sending result back to Flutter: $success")
+                    android.util.Log.d("MainActivity", "═══════════════════════════════════════════════════")
+                    
                     result.success(success)
                 }
                 "cancelAlarm" -> {

@@ -94,4 +94,64 @@ class DateTimeUtils {
       return null;
     }
   }
+
+  /// Calculate next occurrence for recurring reminder
+  static DateTime? calculateNextOccurrence(
+    DateTime currentTime,
+    int interval,
+    String unit, {
+    List<int>? repeatOnDays,
+    DateTime? timeAt,
+  }) {
+    Duration duration;
+
+    switch (unit) {
+      case 'minutes':
+        duration = Duration(minutes: interval);
+        break;
+      case 'hours':
+        duration = Duration(hours: interval);
+        break;
+      case 'days':
+        duration = Duration(days: interval);
+        break;
+      case 'weeks':
+        duration = Duration(days: interval * 7);
+        break;
+      case 'months':
+        duration = Duration(days: interval * 30); // Approximate
+        break;
+      default:
+        duration = Duration(minutes: interval);
+    }
+
+    // If we have specific days of week and a time, calculate next matching day
+    if (repeatOnDays != null && repeatOnDays.isNotEmpty && timeAt != null) {
+      final currentDay = currentTime.weekday; // 1=Monday, 7=Sunday
+      
+      // Find next matching day
+      for (var day in repeatOnDays) {
+        int daysToAdd = day - currentDay;
+        if (daysToAdd < 0) {
+          daysToAdd += 7; // Next week
+        } else if (daysToAdd == 0 && 
+                   currentTime.hour * 60 + currentTime.minute >= timeAt.hour * 60 + timeAt.minute) {
+          daysToAdd = 7; // Same day but time has passed, move to next week
+        }
+        
+        final nextDate = currentTime.add(Duration(days: daysToAdd));
+        return DateTime(
+          nextDate.year,
+          nextDate.month,
+          nextDate.day,
+          timeAt.hour,
+          timeAt.minute,
+          0,
+        );
+      }
+    }
+
+    // Simple interval-based recurrence
+    return currentTime.add(duration);
+  }
 }

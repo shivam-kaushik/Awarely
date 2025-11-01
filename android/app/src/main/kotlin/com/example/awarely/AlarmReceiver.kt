@@ -21,13 +21,23 @@ class AlarmReceiver : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
+        android.util.Log.d("AlarmReceiver", "🔔 AlarmReceiver triggered!")
+        android.util.Log.d("AlarmReceiver", "   Intent action: ${intent.action}")
+        
         val notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, 0)
         val title = intent.getStringExtra(EXTRA_TITLE) ?: "Reminder"
         val body = intent.getStringExtra(EXTRA_BODY) ?: ""
         val payload = intent.getStringExtra(EXTRA_PAYLOAD)
 
+        android.util.Log.d("AlarmReceiver", "   Notification ID: $notificationId")
+        android.util.Log.d("AlarmReceiver", "   Title: $title")
+        android.util.Log.d("AlarmReceiver", "   Body: $body")
+        android.util.Log.d("AlarmReceiver", "   Payload: $payload")
+
         // Create notification channel
         createNotificationChannel(context)
+        
+        android.util.Log.d("AlarmReceiver", "✅ Notification channel created")
 
         // Build notification
         val mainIntent = Intent(context, MainActivity::class.java).apply {
@@ -58,7 +68,12 @@ class AlarmReceiver : BroadcastReceiver() {
         val notificationManager = NotificationManagerCompat.from(context)
         try {
             notificationManager.notify(notificationId, notification)
+            android.util.Log.d("AlarmReceiver", "✅ Notification shown successfully (id=$notificationId)")
         } catch (e: SecurityException) {
+            android.util.Log.e("AlarmReceiver", "❌ SecurityException showing notification: ${e.message}")
+            e.printStackTrace()
+        } catch (e: Exception) {
+            android.util.Log.e("AlarmReceiver", "❌ Error showing notification: ${e.message}")
             e.printStackTrace()
         }
     }

@@ -59,7 +59,10 @@ class DatabaseHelper {
         priority TEXT DEFAULT 'medium',
         category TEXT DEFAULT 'other',
         isPaused INTEGER DEFAULT 0,
-        skipCount INTEGER DEFAULT 0
+        skipCount INTEGER DEFAULT 0,
+        keepRemindingUntilCompleted INTEGER DEFAULT 0,
+        activityType TEXT,
+        useSmartTiming INTEGER DEFAULT 0
       )
     ''');
 
@@ -72,6 +75,7 @@ class DatabaseHelper {
         triggerTime TEXT NOT NULL,
         outcome TEXT NOT NULL,
         metadata TEXT,
+        activity_type TEXT,
         FOREIGN KEY (reminderId) REFERENCES ${AppConstants.remindersTable} (id)
           ON DELETE CASCADE
       )
@@ -101,9 +105,23 @@ class DatabaseHelper {
       ON ${AppConstants.contextEventsTable} (reminderId)
     ''');
 
-    await db.execute('''
+      await db.execute('''
       CREATE INDEX idx_context_events_time 
       ON ${AppConstants.contextEventsTable} (triggerTime)
+    ''');
+
+    // Create learning_patterns table
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS learning_patterns (
+        id TEXT PRIMARY KEY,
+        reminder_text_pattern TEXT,
+        optimal_time_hour INTEGER,
+        optimal_time_minute INTEGER,
+        completion_rate REAL,
+        avg_response_time_seconds INTEGER,
+        sample_count INTEGER,
+        last_updated TEXT NOT NULL
+      )
     ''');
   }
 
@@ -153,6 +171,63 @@ class DatabaseHelper {
         } catch (e) {
           print('Column $column already exists or error: $e');
         }
+      }
+    }
+
+    if (oldVersion < 4) {
+      // Add constant reminder support
+      try {
+        await db.execute(
+          'ALTER TABLE ${AppConstants.remindersTable} ADD COLUMN keepRemindingUntilCompleted INTEGER DEFAULT 0',
+        );
+      } catch (e) {
+        print('keepRemindingUntilCompleted column already exists or error: $e');
+      }
+    }
+
+    if (oldVersion < 5) {
+      // Add Phase 2 features: activity recognition and smart timing
+      try {
+        await db.execute(
+          'ALTER TABLE ${AppConstants.remindersTable} ADD COLUMN activityType TEXT',
+        );
+      } catch (e) {
+        print('activityType column already exists or error: $e');
+      }
+
+      try {
+        await db.execute(
+          'ALTER TABLE ${AppConstants.remindersTable} ADD COLUMN useSmartTiming INTEGER DEFAULT 0',
+        );
+      } catch (e) {
+        print('useSmartTiming column already exists or error: $e');
+      }
+
+      // Add activity_type to context_events
+      try {
+        await db.execute(
+          'ALTER TABLE ${AppConstants.contextEventsTable} ADD COLUMN activity_type TEXT',
+        );
+      } catch (e) {
+        print('activity_type column already exists or error: $e');
+      }
+
+      // Create learning_patterns table
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS learning_patterns (
+            id TEXT PRIMARY KEY,
+            reminder_text_pattern TEXT,
+            optimal_time_hour INTEGER,
+            optimal_time_minute INTEGER,
+            completion_rate REAL,
+            avg_response_time_seconds INTEGER,
+            sample_count INTEGER,
+            last_updated TEXT NOT NULL
+          )
+        ''');
+      } catch (e) {
+        print('learning_patterns table already exists or error: $e');
       }
     }
   }

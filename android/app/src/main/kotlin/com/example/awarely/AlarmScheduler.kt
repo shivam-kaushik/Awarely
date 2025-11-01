@@ -22,15 +22,31 @@ class AlarmScheduler(private val context: Context) {
         scheduledTimeMillis: Long,
         payload: String?
     ): Boolean {
+        Log.d(TAG, "═══════════════════════════════════════════════════")
+        Log.d(TAG, "🔔 AlarmScheduler.scheduleExactAlarm called")
+        Log.d(TAG, "═══════════════════════════════════════════════════")
+        
         try {
             // Check if we can schedule exact alarms
+            Log.d(TAG, "📋 Checking permissions...")
+            Log.d(TAG, "   Android SDK: ${Build.VERSION.SDK_INT}")
+            
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                if (!alarmManager.canScheduleExactAlarms()) {
-                    Log.e(TAG, "Cannot schedule exact alarms - permission not granted")
+                val canSchedule = alarmManager.canScheduleExactAlarms()
+                Log.d(TAG, "   Can schedule exact alarms: $canSchedule")
+                
+                if (!canSchedule) {
+                    Log.e(TAG, "❌ CANNOT SCHEDULE EXACT ALARMS - PERMISSION NOT GRANTED")
+                    Log.e(TAG, "   User needs to grant 'Alarms & Reminders' permission")
+                    Log.e(TAG, "   Go to: Settings → Apps → Awarely → Alarms & Reminders")
                     return false
                 }
+            } else {
+                Log.d(TAG, "   Android < 12, exact alarm permission not required")
             }
 
+            Log.d(TAG, "📝 Creating Intent and PendingIntent...")
+            
             // Create intent for AlarmReceiver
             val intent = Intent(context, AlarmReceiver::class.java).apply {
                 putExtra(AlarmReceiver.EXTRA_NOTIFICATION_ID, id)
@@ -38,6 +54,13 @@ class AlarmScheduler(private val context: Context) {
                 putExtra(AlarmReceiver.EXTRA_BODY, body)
                 putExtra(AlarmReceiver.EXTRA_PAYLOAD, payload)
             }
+            
+            Log.d(TAG, "   Intent created: ${intent.component?.className}")
+            Log.d(TAG, "   Intent extras:")
+            Log.d(TAG, "     - notification_id: $id")
+            Log.d(TAG, "     - title: $title")
+            Log.d(TAG, "     - body: $body")
+            Log.d(TAG, "     - payload: $payload")
 
             val pendingIntent = PendingIntent.getBroadcast(
                 context,
@@ -45,23 +68,54 @@ class AlarmScheduler(private val context: Context) {
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
+            
+            if (pendingIntent != null) {
+                Log.d(TAG, "✅ PendingIntent created successfully")
+            } else {
+                Log.e(TAG, "❌ Failed to create PendingIntent")
+                return false
+            }
 
             // Schedule exact alarm with wake-up
+            val currentTime = System.currentTimeMillis()
+            val timeUntilAlarm = scheduledTimeMillis - currentTime
+            
+            Log.d(TAG, "📅 Scheduling alarm:")
+            Log.d(TAG, "   ID: $id")
+            Log.d(TAG, "   Title: $title")
+            Log.d(TAG, "   Scheduled time (millis): $scheduledTimeMillis")
+            Log.d(TAG, "   Current time (millis): $currentTime")
+            Log.d(TAG, "   Time until alarm: ${timeUntilAlarm / 1000} seconds")
+            
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 alarmManager.setExactAndAllowWhileIdle(
                     AlarmManager.RTC_WAKEUP,
                     scheduledTimeMillis,
                     pendingIntent
                 )
+                Log.d(TAG, "✅ Scheduled exact alarm (AllowWhileIdle): id=$id")
             } else {
                 alarmManager.setExact(
                     AlarmManager.RTC_WAKEUP,
                     scheduledTimeMillis,
                     pendingIntent
                 )
+                Log.d(TAG, "✅ Scheduled exact alarm: id=$id")
             }
-
-            Log.d(TAG, "✅ Scheduled exact alarm: id=$id at $scheduledTimeMillis")
+            
+            // Verify it was scheduled by checking if pending intent exists
+            val verifyIntent = PendingIntent.getBroadcast(
+                context,
+                id,
+                Intent(context, AlarmReceiver::class.java),
+                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+            )
+            if (verifyIntent != null) {
+                Log.d(TAG, "✅ Verified: PendingIntent exists for alarm id=$id")
+            } else {
+                Log.w(TAG, "⚠️ Warning: PendingIntent not found after scheduling id=$id")
+            }
+            
             return true
         } catch (e: Exception) {
             Log.e(TAG, "❌ Failed to schedule alarm: ${e.message}")

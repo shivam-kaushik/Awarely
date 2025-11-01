@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/services/notification_service.dart';
 import '../../core/services/permission_service.dart';
+import '../providers/theme_provider.dart';
 import 'recent_notifications_screen.dart';
 
 /// Settings screen to manage permissions and notification diagnostics
@@ -87,6 +89,82 @@ class _SettingsScreenState extends State<SettingsScreen>
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            // Theme Settings
+            const Text('Appearance',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),),
+            const SizedBox(height: 12),
+            Consumer<ThemeProvider>(
+              builder: (context, themeProvider, child) {
+                return Card(
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.palette),
+                        title: const Text('Theme'),
+                        subtitle: Text(_getThemeModeLabel(themeProvider.themeMode)),
+                        trailing: PopupMenuButton<ThemeMode>(
+                          icon: const Icon(Icons.arrow_drop_down),
+                          onSelected: (mode) {
+                            themeProvider.setThemeMode(mode);
+                          },
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(
+                              value: ThemeMode.system,
+                              child: Row(
+                                children: [
+                                  Icon(Icons.phone_android, size: 20),
+                                  SizedBox(width: 8),
+                                  Text('System Default'),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: ThemeMode.light,
+                              child: Row(
+                                children: [
+                                  Icon(Icons.light_mode, size: 20),
+                                  SizedBox(width: 8),
+                                  Text('Light'),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: ThemeMode.dark,
+                              child: Row(
+                                children: [
+                                  Icon(Icons.dark_mode, size: 20),
+                                  SizedBox(width: 8),
+                                  Text('Dark'),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (themeProvider.themeMode != ThemeMode.system)
+                        SwitchListTile(
+                          secondary: Icon(
+                            themeProvider.isDarkMode(context)
+                                ? Icons.dark_mode
+                                : Icons.light_mode,
+                          ),
+                          title: Text(themeProvider.isDarkMode(context)
+                              ? 'Dark Mode'
+                              : 'Light Mode'),
+                          subtitle: const Text('Toggle between light and dark'),
+                          value: themeProvider.themeMode == ThemeMode.dark,
+                          onChanged: (value) {
+                            themeProvider.setThemeMode(
+                              value ? ThemeMode.dark : ThemeMode.light,
+                            );
+                          },
+                        ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 24),
             const Text('Permissions',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),),
             const SizedBox(height: 12),
@@ -257,5 +335,16 @@ class _SettingsScreenState extends State<SettingsScreen>
         ),
       ),
     );
+  }
+  
+  String _getThemeModeLabel(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.system:
+        return 'System Default';
+      case ThemeMode.light:
+        return 'Light';
+      case ThemeMode.dark:
+        return 'Dark';
+    }
   }
 }
